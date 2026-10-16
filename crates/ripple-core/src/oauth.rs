@@ -105,6 +105,23 @@ pub fn random_value() -> Result<String> {
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
+/// Installation identity is a UUID URN; OAuth nonces use separate random values.
+pub fn new_host_id() -> String {
+    uuid::Uuid::new_v4().urn().to_string()
+}
+
+pub fn is_valid_host_id(value: &str) -> bool {
+    value.starts_with("urn:uuid:")
+        && uuid::Uuid::parse_str(value)
+            .is_ok_and(|id| id.get_version_num() == 4 && id.get_variant() == uuid::Variant::RFC4122)
+}
+
+pub(crate) fn is_legacy_host_id(value: &str) -> bool {
+    URL_SAFE_NO_PAD
+        .decode(value)
+        .is_ok_and(|bytes| bytes.len() == 32)
+}
+
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -168,8 +185,10 @@ impl OAuthClient {
         redirect: &str,
         returning: Option<&Account>,
     ) -> Result<AuthAttempt> {
-        if host_id.is_empty() {
-            return Err(Error::Invalid("A stable host ID is required."));
+        if !is_valid_host_id(host_id) {
+            return Err(Error::Invalid(
+                "The host ID must be a stable urn:uuid: UUIDv4.",
+            ));
         }
         let redirect_uri = callback_uri(redirect)?;
         if let Some(account) = returning
@@ -434,6 +453,22 @@ pub(crate) async fn checked(
 #[cfg(test)]
 mod tests {
     use super::*;
+    const HOST: &str = "urn:uuid:11111111-1111-4111-8111-111111111111";
+
+    #[test]
+    fn generates_uuid_urn_hosts_and_rejects_the_legacy_format_before_authorizing() {
+        assert!(is_valid_host_id(&new_host_id()));
+        assert!(!is_valid_host_id(&random_value().unwrap()));
+        assert!(
+            client()
+                .begin(
+                    &random_value().unwrap(),
+                    "http://127.0.0.1:4310/auth/callback",
+                    None
+                )
+                .is_err()
+        );
+    }
 
     #[test]
     fn verifies_signed_identity_and_rejects_wrong_nonce_audience_issuer_and_expiry() {
@@ -517,11 +552,12 @@ mod tests {
     #[test]
     fn creates_pkce_and_requires_issued_client_and_matching_state() {
         let attempt = client()
-            .begin("host", "http://127.0.0.1:4310/auth/callback", None)
+            .begin(HOST, "http://127.0.0.1:4310/auth/callback", None)
             .unwrap();
         let pairs: std::collections::HashMap<_, _> =
             attempt.authorization_url.query_pairs().collect();
         assert_eq!(pairs["client_id"], DYNAMIC_CLIENT);
+        assert_eq!(pairs["ext_agent_host_id"], HOST);
         assert_eq!(pairs["agent_name_hint"], "Ripple");
         assert_eq!(
             pairs["code_challenge"],
@@ -558,15 +594,11 @@ mod tests {
             issuer: ISSUER.into(),
             subject: "user".into(),
             client_id: "oaiapp_test".into(),
-            host_id: "host".into(),
+            host_id: HOST.into(),
             email: None,
         };
         let mut attempt = client()
-            .begin(
-                "host",
-                "http://127.0.0.1:4310/auth/callback",
-                Some(&account),
-            )
+            .begin(HOST, "http://127.0.0.1:4310/auth/callback", Some(&account))
             .unwrap();
         assert!(
             !attempt
@@ -594,7 +626,7 @@ mod tests {
         assert!(attempt.validate_callback(&callback(&attempt, "")).is_err());
         assert!(
             client()
-                .begin("host", "http://localhost:4310/auth/callback", None)
+                .begin(HOST, "http://localhost:4310/auth/callback", None)
                 .is_err()
         );
     }
@@ -615,7 +647,7 @@ mod tests {
             issuer: ISSUER.into(),
             subject: "user".into(),
             client_id: "oaiapp_test".into(),
-            host_id: "host".into(),
+            host_id: HOST.into(),
             email: None,
         };
         assert!(credentials(tokens, account, None).is_err());

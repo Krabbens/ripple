@@ -8,6 +8,7 @@ import type {
   VisualIntent,
 } from "@ripple/core";
 import { styles } from "./styles.js";
+import { icon } from "./icons.js";
 
 interface ServerState {
   document: RipplePage;
@@ -38,19 +39,26 @@ export function mountHarness(
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = `<style>${styles}</style>
-    <div class="outline"></div><div class="drop"></div><svg aria-hidden="true"></svg>
-    <section class="panel" aria-label="Ripple — tryb deweloperski">
-      <div class="top"><div class="brand"><span>◌</span> ripple</div><span class="badge">developer mode</span><button data-collapse aria-label="Zwiń panel" aria-expanded="true">−</button></div>
+    <div class="outline"></div><div class="drop"></div><svg class="draw-layer" aria-hidden="true"></svg>
+    <section class="panel" data-ui aria-label="Ripple — tryb deweloperski">
+      <div class="top"><div class="brand">${icon("logo")} ripple</div><span class="badge">Edytor</span><button data-collapse aria-label="Zwiń panel" aria-expanded="true">${icon("collapse")}</button></div>
+      <p class="intro">Zmieniaj stronę w jej własnym widoku.</p>
       <div class="tools" aria-label="Narzędzia">
-        <button data-mode="browse" aria-pressed="false">↗ Przeglądaj</button>
-        <button data-mode="select" aria-pressed="true">⌖ Zaznacz</button>
-        <button data-mode="draw" aria-pressed="false">✎ Rysuj</button>
+        <button data-mode="browse" aria-pressed="false">${icon("browse")}Przeglądaj</button>
+        <button data-mode="select" aria-pressed="true">${icon("select")}Zaznacz</button>
+        <button data-mode="draw" aria-pressed="false">${icon("draw")}Rysuj</button>
       </div>
-      <div class="selection"><span data-selection>Wybierz element strony</span><button data-parent title="Zaznacz rodzica" aria-label="Zaznacz rodzica" disabled>↑</button></div>
-      <textarea aria-label="Opisz zmianę" placeholder="Co chcesz zmienić? Możesz też przeciągać elementy i rysować."></textarea>
-      <div class="row meta"><span data-count>0 gestów</span><div><button data-undo disabled>Cofnij gest</button> <button data-reset>Wyczyść</button></div></div>
-      <div class="row"><button class="send" data-send>Zastosuj z Luną ↗</button></div>
-      <div class="row account"><span>GPT-6 Luna · low</span><a href="/auth/login" target="_blank" rel="noopener" data-account>Continue with ChatGPT</a></div>
+      <div class="label">Wybrany element <kbd>Esc</kbd></div>
+      <div class="selection"><span data-selection>Wybierz element strony</span><button data-parent title="Zaznacz rodzica" aria-label="Zaznacz rodzica" disabled>${icon("parent")}</button></div>
+      <p class="hint" data-hint>Kliknij element. Przytrzymaj, żeby przenieść.</p>
+      <div class="compose"><label class="label" for="ripple-instruction">Opisz zmianę</label>
+        <textarea id="ripple-instruction" aria-label="Opisz zmianę" placeholder="Np. więcej miejsca wokół nagłówka i krótszy tekst przycisku."></textarea>
+        <div class="row meta"><span data-count>0 gestów</span><div><button data-undo disabled>Cofnij gest</button> <button data-reset>Wyczyść</button></div></div>
+      </div>
+      <button class="send" data-send>Zastosuj zmiany ${icon("send")}</button>
+      <div class="model"><span>GPT-6 Luna</span><span>Myślenie: low</span></div>
+      <div class="account"><a href="/auth/login" target="_blank" rel="noopener" data-account>Continue with ChatGPT</a></div>
+      <p class="source" data-source></p>
       <div class="status" role="status" aria-live="polite"></div>
     </section>`;
   document.body.append(host);
@@ -66,6 +74,14 @@ export function mountHarness(
   const send = required<HTMLButtonElement>("[data-send]");
   const abort = new AbortController();
   const options = { signal: abort.signal, capture: true };
+  const originalMargin = runtime.mount.style.marginRight;
+  required("[data-source]").textContent = runtime.sourceFile;
+  function syncCanvasInset(): void {
+    const expanded =
+      required<HTMLElement>(".panel").dataset["collapsed"] !== "true";
+    runtime.mount.style.marginRight =
+      innerWidth >= 980 && expanded ? "360px" : originalMargin;
+  }
   let mode: Mode = "select";
   let selected: string | null = null;
   let actions: VisualAction[] = [];
@@ -118,7 +134,16 @@ export function mountHarness(
       : "Wybierz element strony";
     required<HTMLButtonElement>("[data-parent]").disabled =
       !selected || !parentOf(runtime.page.root, selected);
-    required("[data-count]").textContent = `${actions.length} gestów`;
+    const count = actions.length;
+    const noun =
+      count === 1
+        ? "gest"
+        : count % 10 >= 2 &&
+            count % 10 <= 4 &&
+            !(count % 100 >= 12 && count % 100 <= 14)
+          ? "gesty"
+          : "gestów";
+    required("[data-count]").textContent = `${count} ${noun}`;
     required<HTMLButtonElement>("[data-undo]").disabled =
       busy || history.length === 0;
     svg.replaceChildren();
@@ -164,6 +189,12 @@ export function mountHarness(
     runtime.mount.style.cursor =
       mode === "draw" ? "crosshair" : mode === "select" ? "default" : "";
     runtime.mount.style.userSelect = mode === "browse" ? "" : "none";
+    required("[data-hint]").textContent =
+      mode === "draw"
+        ? "Rysuj bezpośrednio na stronie. Dodaj opis poniżej."
+        : mode === "browse"
+          ? "Strona działa normalnie. Esc przełącza na przeglądanie."
+          : "Kliknij element. Przytrzymaj, żeby przenieść.";
     refresh();
   }
   function pageElement(target: EventTarget | null): HTMLElement | undefined {
@@ -198,7 +229,7 @@ export function mountHarness(
       block(event);
       if (mode === "draw") {
         remember();
-        stroke = { points: [point(event)], color: "#8060d8", width: 3 };
+        stroke = { points: [point(event)], color: "#1f6c9f", width: 3 };
         strokes.push(stroke);
       } else {
         const element = pageElement(event.target)!;
@@ -351,7 +382,14 @@ export function mountHarness(
     options,
   );
   window.addEventListener("scroll", refresh, options);
-  window.addEventListener("resize", refresh, options);
+  window.addEventListener(
+    "resize",
+    () => {
+      syncCanvasInset();
+      refresh();
+    },
+    options,
+  );
   runtime.mount.addEventListener("ripple:render", refresh, {
     signal: abort.signal,
   });
@@ -374,16 +412,22 @@ export function mountHarness(
     const parent = selected ? parentOf(runtime.page.root, selected) : undefined;
     if (parent && !busy) select(parent.id);
   });
-  required("[data-collapse]").addEventListener("click", () => {
+  function setCollapsed(collapsed: boolean): void {
     const panel = required<HTMLElement>(".panel");
-    const collapsed = panel.dataset["collapsed"] !== "true";
     panel.dataset["collapsed"] = String(collapsed);
     const button = required<HTMLButtonElement>("[data-collapse]");
-    button.textContent = collapsed ? "+" : "−";
+    button.innerHTML = icon(collapsed ? "expand" : "collapse");
     button.setAttribute("aria-expanded", String(!collapsed));
     button.setAttribute(
       "aria-label",
       collapsed ? "Rozwiń panel" : "Zwiń panel",
+    );
+    syncCanvasInset();
+    refresh();
+  }
+  required("[data-collapse]").addEventListener("click", () => {
+    setCollapsed(
+      required<HTMLElement>(".panel").dataset["collapsed"] !== "true",
     );
   });
   required("[data-undo]").addEventListener("click", () => {
@@ -536,17 +580,19 @@ export function mountHarness(
     } finally {
       busy = false;
       send.disabled = false;
-      send.textContent = "Zastosuj z Luną ↗";
+      send.innerHTML = `Zastosuj zmiany ${icon("send")}`;
       refresh();
     }
   }
   setMode("select");
+  setCollapsed(innerWidth < 980);
   return {
     destroy() {
       abort.abort();
       host.remove();
       runtime.mount.style.cursor = "";
       runtime.mount.style.userSelect = "";
+      runtime.mount.style.marginRight = originalMargin;
     },
   };
 }

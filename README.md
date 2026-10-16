@@ -19,12 +19,12 @@ Otwórz `http://127.0.0.1:4310`. Strona działa przed logowaniem. W panelu:
 2. Przeciągnij element przed lub za inny; znacznik pokazuje miejsce wstawienia.
 3. Wybierz **Rysuj**, aby dodać uwagi. **Cofnij gest** cofa lokalny podgląd.
 4. Użyj **Continue with ChatGPT**, aby połączyć własną subskrypcję.
-5. Dopisz instrukcję i wybierz **Zastosuj z Luną**.
+5. Dopisz instrukcję i wybierz **Zastosuj zmiany**.
 
 Model otrzymuje dokument, podgląd układu, stałe ID elementów, gesty i ewentualny
 schemat PNG z rysunkami. Po zakończonej odpowiedzi Rust sprawdza dokument i zapisuje
 `ripple.page.json`; runtime wyświetla nową wersję. **Wyczyść** odrzuca niezapisany
-podgląd. Panel można zwinąć przyciskiem **−**.
+podgląd. Panel można zwinąć przyciskiem **Zwiń panel**; na telefonie startuje zwinięty.
 
 ```sh
 # Inny port lub plik strony
@@ -37,7 +37,9 @@ Ripple używa własnego OAuth i żądań HTTP, z domyślnym modelem `gpt-6-luna`
 i `reasoning.effort: low`. Nie wymaga instalacji Codexa ani klucza API.
 
 Pierwsze logowanie korzysta z dynamicznej rejestracji klienta **Ripple**, PKCE
-i lokalnego callbacku na `127.0.0.1`. Tokeny pozostają w procesie Rust i chronionym
+i lokalnego callbacku na `127.0.0.1`. Host ma zapisany raz identyfikator UUIDv4
+w formacie `urn:uuid:…`. Starsze identyfikatory z prototypu są migrowane bez usuwania
+kont i tokenów. Tokeny pozostają w procesie Rust i chronionym
 pliku `~/.config/ripple/accounts.json`. `XDG_CONFIG_HOME` lub `RIPPLE_HOME` zmieniają
 lokalizację. Tylko jeden proces może jednocześnie korzystać z danego magazynu kont.
 
@@ -50,6 +52,9 @@ oraz [bezpośredni Responses API](https://developers.openai.com/siwc/token-shari
 `store: false`, `stream: true`, pełny kontekst w każdym żądaniu.
 
 ## Struktura
+
+UI edytora stosuje wariant `minimalist-ui` z [taste-skill](https://github.com/Leonxlnx/taste-skill).
+Przypięta kopia i licencja są w `.agents/skills/minimalist-ui/`.
 
 - `packages/core/` — format dokumentu, operacje na drzewie i renderer DOM.
 - `packages/harness/` — osadzony panel w Shadow DOM, zaznaczanie, przenoszenie

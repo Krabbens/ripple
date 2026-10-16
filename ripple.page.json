@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "title": "Ripple — strony budowane gestem",
+  "title": "Ripple — zmień stronę gestem",
   "root": {
     "id": "page",
     "tag": "main",
     "styles": {
-      "max-width": "1180px",
+      "max-width": "1160px",
       "margin": "0 auto",
-      "padding": "36px clamp(24px, 5vw, 64px) 180px",
-      "font-family": "system-ui, sans-serif",
-      "color": "#14271f"
+      "padding": "36px clamp(24px, 4vw, 52px) 120px",
+      "font-family": "'SF Pro Display', 'Helvetica Neue', Arial, sans-serif",
+      "color": "#2f3437"
     },
     "children": [
       {
@@ -19,86 +19,82 @@
           "display": "flex",
           "justify-content": "space-between",
           "align-items": "center",
-          "padding-bottom": "26px",
-          "border-bottom": "1px solid #c8cec2",
+          "padding-bottom": "24px",
+          "border-bottom": "1px solid #eaeaea",
           "gap": "20px"
         },
         "children": [
           {
             "id": "wordmark",
             "tag": "span",
-            "text": "◌ ripple",
+            "text": "ripple",
             "styles": {
-              "font-size": "27px",
-              "font-weight": "650",
+              "font-size": "26px",
+              "font-weight": "600",
               "letter-spacing": "-1px"
             }
           },
           {
             "id": "navigation-note",
             "tag": "span",
-            "text": "A website is a work in progress.",
-            "styles": { "font-size": "12px", "color": "#617062" }
+            "text": "Projekt przykładowy",
+            "styles": {
+              "font-size": "13px",
+              "color": "#787774"
+            }
           }
         ]
       },
       {
         "id": "hero",
         "tag": "section",
-        "styles": { "padding": "64px 0 48px", "max-width": "800px" },
+        "styles": {
+          "padding": "68px 0 64px",
+          "max-width": "800px"
+        },
         "children": [
-          {
-            "id": "eyebrow",
-            "tag": "p",
-            "text": "TWÓJ POMYSŁ. TWÓJ RUCH.",
-            "styles": {
-              "font-size": "11px",
-              "letter-spacing": "2.5px",
-              "font-weight": "600",
-              "margin": "0 0 22px",
-              "color": "#536844"
-            }
-          },
           {
             "id": "hero-title",
             "tag": "h1",
-            "text": "Strony budowane gestem.",
+            "text": "Zmień stronę gestem.",
             "styles": {
-              "font-family": "Georgia, serif",
-              "font-size": "clamp(52px, 8vw, 92px)",
+              "font-family": "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
+              "font-size": "clamp(44px, 6.4vw, 76px)",
               "font-weight": "400",
-              "line-height": "1.02",
-              "letter-spacing": "-4px",
+              "line-height": "1.08",
+              "letter-spacing": "-0.035em",
               "margin": "0 0 26px",
-              "max-width": "700px"
+              "max-width": "680px"
             }
           },
           {
             "id": "hero-description",
             "tag": "p",
-            "text": "Zaznacz to, co chcesz zmienić. Przesuń to, co jest nie na miejscu. Narysuj pomysł, którego jeszcze nie umiesz nazwać.",
+            "text": "Wskaż fragment, przesuń go w nowe miejsce albo narysuj uwagę. Ripple zamieni Twój pomysł w zmianę strony.",
             "styles": {
               "font-size": "17px",
-              "line-height": "1.7",
-              "max-width": "490px",
-              "color": "#617062",
+              "line-height": "1.6",
+              "max-width": "480px",
+              "color": "#2f3437",
               "margin": "0 0 30px"
             }
           },
           {
             "id": "hero-action",
             "tag": "a",
-            "text": "Zrób pierwszy ruch ↘",
-            "attributes": { "href": "#workflow" },
+            "text": "Wypróbuj na tej stronie",
+            "attributes": {
+              "href": "#workflow"
+            },
             "styles": {
               "display": "inline-block",
               "text-decoration": "none",
-              "color": "#14271f",
-              "background": "#d2f87b",
-              "padding": "14px 22px",
-              "border-radius": "4px",
+              "color": "#ffffff",
+              "background": "#111111",
+              "padding": "13px 20px",
+              "border-radius": "6px",
               "font-size": "14px",
-              "font-weight": "600"
+              "font-weight": "500"
             }
           }
         ]
@@ -114,28 +110,31 @@
               "display": "flex",
               "justify-content": "space-between",
               "align-items": "baseline",
-              "border-top": "1px solid #c8cec2",
-              "padding": "20px 0"
+              "border-top": "1px solid #eaeaea",
+              "padding": "24px 0",
+              "gap": "16px",
+              "flex-wrap": "wrap"
             },
             "children": [
               {
                 "id": "workflow-title",
                 "tag": "h2",
-                "text": "Mniej opisywania. Więcej robienia.",
+                "text": "Pracuj bezpośrednio na stronie.",
                 "styles": {
-                  "font-size": "15px",
+                  "font-size": "18px",
                   "font-weight": "500",
-                  "margin": "0"
+                  "margin": "0",
+                  "line-height": "1.4"
                 }
               },
               {
                 "id": "workflow-count",
                 "tag": "span",
-                "text": "01 — 03",
+                "text": "Podgląd przed zapisem",
                 "styles": {
-                  "font-size": "11px",
-                  "color": "#617062",
-                  "font-family": "monospace"
+                  "font-size": "12px",
+                  "color": "#787774",
+                  "font-family": "'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
                 }
               }
             ]
@@ -143,38 +142,44 @@
           {
             "id": "cards",
             "tag": "div",
-            "styles": { "display": "flex", "flex-wrap": "wrap", "gap": "16px" },
+            "styles": {
+              "display": "grid",
+              "grid-template-columns": "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
+              "gap": "16px"
+            },
             "children": [
               {
                 "id": "card-select",
                 "tag": "article",
                 "styles": {
-                  "flex": "1 1 220px",
-                  "background": "#e8eddf",
+                  "background": "#ffffff",
+                  "border": "1px solid #eaeaea",
                   "border-radius": "8px",
                   "padding": "28px",
-                  "min-height": "245px"
+                  "min-height": "200px",
+                  "grid-column": "1 / -1"
                 },
                 "children": [
                   {
                     "id": "select-number",
                     "tag": "span",
-                    "text": "01 / ZAZNACZ",
+                    "text": "Zaznaczanie",
                     "styles": {
-                      "font-size": "10px",
-                      "letter-spacing": "1.5px",
-                      "color": "#617062"
+                      "font-size": "13px",
+                      "color": "#787774"
                     }
                   },
                   {
                     "id": "select-title",
                     "tag": "h3",
-                    "text": "Ten element.",
+                    "text": "Wskaż fragment.",
                     "styles": {
-                      "font-family": "Georgia, serif",
+                      "font-family": "'Iowan Old Style', Georgia, serif",
                       "font-size": "30px",
                       "font-weight": "400",
-                      "margin": "32px 0 14px"
+                      "letter-spacing": "-0.025em",
+                      "line-height": "1.15",
+                      "margin": "24px 0 14px"
                     }
                   },
                   {
@@ -182,10 +187,11 @@
                     "tag": "p",
                     "text": "Kliknij nagłówek, przycisk albo całą sekcję. Ripple wie, o którym fragmencie mówisz.",
                     "styles": {
-                      "font-size": "13px",
-                      "line-height": "1.7",
-                      "color": "#617062",
-                      "margin": "0"
+                      "font-size": "15px",
+                      "line-height": "1.6",
+                      "color": "#2f3437",
+                      "margin": "0",
+                      "max-width": "540px"
                     }
                   }
                 ]
@@ -194,32 +200,33 @@
                 "id": "card-move",
                 "tag": "article",
                 "styles": {
-                  "flex": "1 1 220px",
-                  "background": "#eee9e3",
+                  "background": "#fbfbfa",
+                  "border": "1px solid #eaeaea",
                   "border-radius": "8px",
                   "padding": "28px",
-                  "min-height": "245px"
+                  "min-height": "220px"
                 },
                 "children": [
                   {
                     "id": "move-number",
                     "tag": "span",
-                    "text": "02 / PRZESUŃ",
+                    "text": "Układ strony",
                     "styles": {
-                      "font-size": "10px",
-                      "letter-spacing": "1.5px",
-                      "color": "#617062"
+                      "font-size": "13px",
+                      "color": "#787774"
                     }
                   },
                   {
                     "id": "move-title",
                     "tag": "h3",
-                    "text": "Właśnie tutaj.",
+                    "text": "Znajdź mu miejsce.",
                     "styles": {
-                      "font-family": "Georgia, serif",
+                      "font-family": "'Iowan Old Style', Georgia, serif",
                       "font-size": "30px",
                       "font-weight": "400",
-                      "margin": "32px 0 14px"
+                      "letter-spacing": "-0.025em",
+                      "line-height": "1.15",
+                      "margin": "24px 0 14px"
                     }
                   },
                   {
@@ -227,10 +234,11 @@
                     "tag": "p",
                     "text": "Przeciągnij element między inne. Zobacz układ od razu, a potem zapisz go z Luną.",
                     "styles": {
-                      "font-size": "13px",
-                      "line-height": "1.7",
-                      "color": "#617062",
-                      "margin": "0"
+                      "font-size": "15px",
+                      "line-height": "1.6",
+                      "color": "#2f3437",
+                      "margin": "0",
+                      "max-width": "540px"
                     }
                   }
                 ]
@@ -239,32 +247,33 @@
                 "id": "card-draw",
                 "tag": "article",
                 "styles": {
-                  "flex": "1 1 220px",
-                  "background": "#e9e5f2",
+                  "background": "#e1f3fe",
+                  "border": "1px solid #eaeaea",
                   "border-radius": "8px",
                   "padding": "28px",
-                  "min-height": "245px"
+                  "min-height": "220px"
                 },
                 "children": [
                   {
                     "id": "draw-number",
                     "tag": "span",
-                    "text": "03 / NARYSUJ",
+                    "text": "Rysowanie",
                     "styles": {
-                      "font-size": "10px",
-                      "letter-spacing": "1.5px",
-                      "color": "#71628a"
+                      "font-size": "13px",
+                      "color": "#787774"
                     }
                   },
                   {
                     "id": "draw-title",
                     "tag": "h3",
-                    "text": "Mniej więcej tak.",
+                    "text": "Naszkicuj zmianę.",
                     "styles": {
-                      "font-family": "Georgia, serif",
+                      "font-family": "'Iowan Old Style', Georgia, serif",
                       "font-size": "30px",
                       "font-weight": "400",
-                      "margin": "32px 0 14px"
+                      "letter-spacing": "-0.025em",
+                      "line-height": "1.15",
+                      "margin": "24px 0 14px"
                     }
                   },
                   {
@@ -272,10 +281,11 @@
                     "tag": "p",
                     "text": "Zakreśl fragment, połącz miejsca albo naszkicuj nowy układ. Dodaj kilka słów i wyślij.",
                     "styles": {
-                      "font-size": "13px",
-                      "line-height": "1.7",
-                      "color": "#71628a",
-                      "margin": "0"
+                      "font-size": "15px",
+                      "line-height": "1.6",
+                      "color": "#2f3437",
+                      "margin": "0",
+                      "max-width": "540px"
                     }
                   }
                 ]
@@ -287,13 +297,13 @@
       {
         "id": "footer",
         "tag": "footer",
-        "text": "Ripple / Własny runtime. Twoja subskrypcja. Twoja strona.",
+        "text": "Zbudowane w Ripple.",
         "styles": {
           "margin-top": "50px",
-          "padding-top": "20px",
-          "border-top": "1px solid #c8cec2",
-          "font-size": "11px",
-          "color": "#617062"
+          "padding-top": "24px",
+          "border-top": "1px solid #eaeaea",
+          "font-size": "14px",
+          "color": "#787774"
         }
       }
     ]

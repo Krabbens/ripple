@@ -16,6 +16,9 @@ Projekt rozwijamy w Rust i TypeScript. Rozmawiaj z użytkownikiem po polsku.
 
 ## Układ i narzędzia
 
+- Przy tworzeniu UI stosuj [.agents/skills/minimalist-ui/SKILL.md](.agents/skills/minimalist-ui/SKILL.md)
+  z `Leonxlnx/taste-skill`; wariant jest przeznaczony do interfejsów aplikacji.
+
 - Rust: Cargo workspace, edition 2024, toolchain z `rust-toolchain.toml`.
 - TypeScript: npm workspaces, ESM, wspólna konfiguracja `tsconfig.base.json` z `strict`.
 - Crate'y umieszczaj w `crates/`, pakiety TypeScript w `packages/`.

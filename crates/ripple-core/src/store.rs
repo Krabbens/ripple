@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Result,
-    oauth::{Credentials, random_value},
+    oauth::{Credentials, is_legacy_host_id, is_valid_host_id, new_host_id},
 };
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -70,7 +70,7 @@ impl AccountStore {
             if bytes.len() > 2_000_000 {
                 return Err(Error::Invalid("Account store is too large."));
             }
-            let data: StoreData = serde_json::from_slice(&bytes)?;
+            let mut data: StoreData = serde_json::from_slice(&bytes)?;
             if data.version != 1 || data.host_id.is_empty() {
                 return Err(Error::Invalid("Invalid account store."));
             }
@@ -79,11 +79,14 @@ impl AccountStore {
                 use std::os::unix::fs::PermissionsExt;
                 fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
             }
+            if migrate_host_identity(&mut data)? {
+                atomic_json(&path, &data)?;
+            }
             data
         } else {
             let data = StoreData {
                 version: 1,
-                host_id: random_value()?,
+                host_id: new_host_id(),
                 active_client_id: None,
                 accounts: vec![],
             };
@@ -136,6 +139,28 @@ impl AccountStore {
     }
 }
 
+fn migrate_host_identity(data: &mut StoreData) -> Result<bool> {
+    if is_valid_host_id(&data.host_id) {
+        return Ok(false);
+    }
+    if !is_legacy_host_id(&data.host_id)
+        || data
+            .accounts
+            .iter()
+            .any(|c| c.account.host_id != data.host_id)
+    {
+        return Err(Error::Invalid(
+            "Invalid host identity in the account store.",
+        ));
+    }
+    let host_id = new_host_id();
+    for credentials in &mut data.accounts {
+        credentials.account.host_id = host_id.clone();
+    }
+    data.host_id = host_id;
+    Ok(true)
+}
+
 fn reject_symlink(path: &Path) -> Result<()> {
     if path
         .symlink_metadata()
@@ -163,6 +188,41 @@ pub fn atomic_json(path: &Path, value: &impl Serialize) -> Result<()> {
 mod tests {
     use super::*;
     use crate::oauth::Account;
+
+    #[test]
+    fn migrates_legacy_host_once_without_losing_registered_accounts_or_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = crate::oauth::random_value().unwrap();
+        let value = serde_json::json!({
+            "version":1,"host_id":legacy,"active_client_id":"existing-client",
+            "accounts":[{"account":{"issuer":"https://auth.openai.com","subject":"existing-user","client_id":"existing-client","host_id":legacy,"email":null},
+            "access_token":"existing-access","refresh_token":"existing-refresh","id_token":"existing-id",
+            "scopes":["chatgpt.tokens.use.direct"],"expires_at":u64::MAX}]
+        });
+        atomic_json(&dir.path().join("accounts.json"), &value).unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        let host = store.host_id().to_owned();
+        assert!(is_valid_host_id(&host));
+        assert_ne!(host, legacy);
+        let credentials = store.active().unwrap();
+        assert_eq!(credentials.account.client_id, "existing-client");
+        assert_eq!(credentials.account.host_id, host);
+        assert_eq!(credentials.access_token, "existing-access");
+        assert_eq!(credentials.refresh_token, "existing-refresh");
+        drop(store);
+        assert_eq!(AccountStore::open(dir.path()).unwrap().host_id(), host);
+    }
+
+    #[test]
+    fn rejects_unknown_host_corruption_without_rewriting_the_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("accounts.json");
+        let value = serde_json::json!({"version":1,"host_id":"not-a-host","active_client_id":null,"accounts":[]});
+        atomic_json(&path, &value).unwrap();
+        let previous = fs::read(&path).unwrap();
+        assert!(AccountStore::open(dir.path()).is_err());
+        assert_eq!(fs::read(&path).unwrap(), previous);
+    }
 
     #[test]
     fn persists_host_identity_and_locks_out_a_second_process() {
