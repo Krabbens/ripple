@@ -244,5 +244,6 @@ GitHub Actions wykonuje te kontrole. Testy automatyczne nie używają prawdziweg
 konta ani subskrypcji. Lokalne próby z OAuth wymagają połączonego konta.
 
 Starszy prototyp z `ripple.page.json` i własnym rendererem pozostaje dostępny przez
-`npm run dev -- --page ripple.page.json`. Ma osobną, starszą pętlę narzędzi; limity
-małych kroków i SSE dotyczą pluginu. Nowe integracje nie wymagają dokumentu JSON.
+`npm run dev -- --page ripple.page.json`. Manifest z polem `page` uruchamia starszą
+edycję projektu z narzędziami. Limity małych kroków i SSE dotyczą pluginu.
+Nowe integracje nie wymagają dokumentu JSON.
