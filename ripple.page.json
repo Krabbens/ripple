@@ -1,0 +1,301 @@
+{
+  "version": 1,
+  "title": "Ripple — strony budowane gestem",
+  "root": {
+    "id": "page",
+    "tag": "main",
+    "styles": {
+      "max-width": "1180px",
+      "margin": "0 auto",
+      "padding": "36px clamp(24px, 5vw, 64px) 180px",
+      "font-family": "system-ui, sans-serif",
+      "color": "#14271f"
+    },
+    "children": [
+      {
+        "id": "navigation",
+        "tag": "header",
+        "styles": {
+          "display": "flex",
+          "justify-content": "space-between",
+          "align-items": "center",
+          "padding-bottom": "26px",
+          "border-bottom": "1px solid #c8cec2",
+          "gap": "20px"
+        },
+        "children": [
+          {
+            "id": "wordmark",
+            "tag": "span",
+            "text": "◌ ripple",
+            "styles": {
+              "font-size": "27px",
+              "font-weight": "650",
+              "letter-spacing": "-1px"
+            }
+          },
+          {
+            "id": "navigation-note",
+            "tag": "span",
+            "text": "A website is a work in progress.",
+            "styles": { "font-size": "12px", "color": "#617062" }
+          }
+        ]
+      },
+      {
+        "id": "hero",
+        "tag": "section",
+        "styles": { "padding": "64px 0 48px", "max-width": "800px" },
+        "children": [
+          {
+            "id": "eyebrow",
+            "tag": "p",
+            "text": "TWÓJ POMYSŁ. TWÓJ RUCH.",
+            "styles": {
+              "font-size": "11px",
+              "letter-spacing": "2.5px",
+              "font-weight": "600",
+              "margin": "0 0 22px",
+              "color": "#536844"
+            }
+          },
+          {
+            "id": "hero-title",
+            "tag": "h1",
+            "text": "Strony budowane gestem.",
+            "styles": {
+              "font-family": "Georgia, serif",
+              "font-size": "clamp(52px, 8vw, 92px)",
+              "font-weight": "400",
+              "line-height": "1.02",
+              "letter-spacing": "-4px",
+              "margin": "0 0 26px",
+              "max-width": "700px"
+            }
+          },
+          {
+            "id": "hero-description",
+            "tag": "p",
+            "text": "Zaznacz to, co chcesz zmienić. Przesuń to, co jest nie na miejscu. Narysuj pomysł, którego jeszcze nie umiesz nazwać.",
+            "styles": {
+              "font-size": "17px",
+              "line-height": "1.7",
+              "max-width": "490px",
+              "color": "#617062",
+              "margin": "0 0 30px"
+            }
+          },
+          {
+            "id": "hero-action",
+            "tag": "a",
+            "text": "Zrób pierwszy ruch ↘",
+            "attributes": { "href": "#workflow" },
+            "styles": {
+              "display": "inline-block",
+              "text-decoration": "none",
+              "color": "#14271f",
+              "background": "#d2f87b",
+              "padding": "14px 22px",
+              "border-radius": "4px",
+              "font-size": "14px",
+              "font-weight": "600"
+            }
+          }
+        ]
+      },
+      {
+        "id": "workflow",
+        "tag": "section",
+        "children": [
+          {
+            "id": "workflow-heading",
+            "tag": "div",
+            "styles": {
+              "display": "flex",
+              "justify-content": "space-between",
+              "align-items": "baseline",
+              "border-top": "1px solid #c8cec2",
+              "padding": "20px 0"
+            },
+            "children": [
+              {
+                "id": "workflow-title",
+                "tag": "h2",
+                "text": "Mniej opisywania. Więcej robienia.",
+                "styles": {
+                  "font-size": "15px",
+                  "font-weight": "500",
+                  "margin": "0"
+                }
+              },
+              {
+                "id": "workflow-count",
+                "tag": "span",
+                "text": "01 — 03",
+                "styles": {
+                  "font-size": "11px",
+                  "color": "#617062",
+                  "font-family": "monospace"
+                }
+              }
+            ]
+          },
+          {
+            "id": "cards",
+            "tag": "div",
+            "styles": { "display": "flex", "flex-wrap": "wrap", "gap": "16px" },
+            "children": [
+              {
+                "id": "card-select",
+                "tag": "article",
+                "styles": {
+                  "flex": "1 1 220px",
+                  "background": "#e8eddf",
+                  "border-radius": "8px",
+                  "padding": "28px",
+                  "min-height": "245px"
+                },
+                "children": [
+                  {
+                    "id": "select-number",
+                    "tag": "span",
+                    "text": "01 / ZAZNACZ",
+                    "styles": {
+                      "font-size": "10px",
+                      "letter-spacing": "1.5px",
+                      "color": "#617062"
+                    }
+                  },
+                  {
+                    "id": "select-title",
+                    "tag": "h3",
+                    "text": "Ten element.",
+                    "styles": {
+                      "font-family": "Georgia, serif",
+                      "font-size": "30px",
+                      "font-weight": "400",
+                      "margin": "32px 0 14px"
+                    }
+                  },
+                  {
+                    "id": "select-body",
+                    "tag": "p",
+                    "text": "Kliknij nagłówek, przycisk albo całą sekcję. Ripple wie, o którym fragmencie mówisz.",
+                    "styles": {
+                      "font-size": "13px",
+                      "line-height": "1.7",
+                      "color": "#617062",
+                      "margin": "0"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "card-move",
+                "tag": "article",
+                "styles": {
+                  "flex": "1 1 220px",
+                  "background": "#eee9e3",
+                  "border-radius": "8px",
+                  "padding": "28px",
+                  "min-height": "245px"
+                },
+                "children": [
+                  {
+                    "id": "move-number",
+                    "tag": "span",
+                    "text": "02 / PRZESUŃ",
+                    "styles": {
+                      "font-size": "10px",
+                      "letter-spacing": "1.5px",
+                      "color": "#617062"
+                    }
+                  },
+                  {
+                    "id": "move-title",
+                    "tag": "h3",
+                    "text": "Właśnie tutaj.",
+                    "styles": {
+                      "font-family": "Georgia, serif",
+                      "font-size": "30px",
+                      "font-weight": "400",
+                      "margin": "32px 0 14px"
+                    }
+                  },
+                  {
+                    "id": "move-body",
+                    "tag": "p",
+                    "text": "Przeciągnij element między inne. Zobacz układ od razu, a potem zapisz go z Luną.",
+                    "styles": {
+                      "font-size": "13px",
+                      "line-height": "1.7",
+                      "color": "#617062",
+                      "margin": "0"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "card-draw",
+                "tag": "article",
+                "styles": {
+                  "flex": "1 1 220px",
+                  "background": "#e9e5f2",
+                  "border-radius": "8px",
+                  "padding": "28px",
+                  "min-height": "245px"
+                },
+                "children": [
+                  {
+                    "id": "draw-number",
+                    "tag": "span",
+                    "text": "03 / NARYSUJ",
+                    "styles": {
+                      "font-size": "10px",
+                      "letter-spacing": "1.5px",
+                      "color": "#71628a"
+                    }
+                  },
+                  {
+                    "id": "draw-title",
+                    "tag": "h3",
+                    "text": "Mniej więcej tak.",
+                    "styles": {
+                      "font-family": "Georgia, serif",
+                      "font-size": "30px",
+                      "font-weight": "400",
+                      "margin": "32px 0 14px"
+                    }
+                  },
+                  {
+                    "id": "draw-body",
+                    "tag": "p",
+                    "text": "Zakreśl fragment, połącz miejsca albo naszkicuj nowy układ. Dodaj kilka słów i wyślij.",
+                    "styles": {
+                      "font-size": "13px",
+                      "line-height": "1.7",
+                      "color": "#71628a",
+                      "margin": "0"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "footer",
+        "tag": "footer",
+        "text": "Ripple / Własny runtime. Twoja subskrypcja. Twoja strona.",
+        "styles": {
+          "margin-top": "50px",
+          "padding-top": "20px",
+          "border-top": "1px solid #c8cec2",
+          "font-size": "11px",
+          "color": "#617062"
+        }
+      }
+    ]
+  }
+}

@@ -44,3 +44,4 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run build
+      - run: node --test packages/core/test/*.test.mjs

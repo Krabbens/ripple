@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ripple</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f4f3ed;
+        color: #14271f;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "@ripple/core": "/modules/core/index.js",
+          "@ripple/harness": "/modules/harness/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { RippleRuntime } from "@ripple/core";
+      import { mountHarness } from "@ripple/harness";
+      try {
+        const response = await fetch("/api/state");
+        if (!response.ok)
+          throw new Error("Nie można odczytać dokumentu Ripple.");
+        const state = await response.json();
+        const runtime = new RippleRuntime(
+          document.querySelector("#app"),
+          state.document,
+          state.sourceFile,
+        );
+        const harness = mountHarness(runtime, state.revision);
+        window.ripple = { runtime, harness };
+      } catch (error) {
+        document.querySelector("#app").textContent = error.message;
+      }
+    </script>
+  </body>
+</html>

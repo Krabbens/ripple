@@ -1,0 +1,552 @@
+import { findNode, parentOf } from "@ripple/core";
+import type {
+  RippleRuntime,
+  RipplePage,
+  Stroke,
+  Point,
+  VisualAction,
+  VisualIntent,
+} from "@ripple/core";
+import { styles } from "./styles.js";
+
+interface ServerState {
+  document: RipplePage;
+  revision: string;
+  account: { email: string | null; subject: string } | null;
+  model: string;
+  effort: string;
+}
+type Mode = "browse" | "select" | "draw";
+interface Snapshot {
+  page: RipplePage;
+  actions: VisualAction[];
+  strokes: Stroke[];
+  selected: string | null;
+}
+interface Drop {
+  parentId: string;
+  beforeId: string | null;
+}
+
+/** Mount explicitly from the development entry point; production uses only the runtime. */
+export function mountHarness(
+  runtime: RippleRuntime,
+  initialRevision: string,
+): { destroy(): void } {
+  const host = document.createElement("ripple-devtools");
+  host.style.cssText =
+    "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = `<style>${styles}</style>
+    <div class="outline"></div><div class="drop"></div><svg aria-hidden="true"></svg>
+    <section class="panel" aria-label="Ripple — tryb deweloperski">
+      <div class="top"><div class="brand"><span>◌</span> ripple</div><span class="badge">developer mode</span><button data-collapse aria-label="Zwiń panel" aria-expanded="true">−</button></div>
+      <div class="tools" aria-label="Narzędzia">
+        <button data-mode="browse" aria-pressed="false">↗ Przeglądaj</button>
+        <button data-mode="select" aria-pressed="true">⌖ Zaznacz</button>
+        <button data-mode="draw" aria-pressed="false">✎ Rysuj</button>
+      </div>
+      <div class="selection"><span data-selection>Wybierz element strony</span><button data-parent title="Zaznacz rodzica" aria-label="Zaznacz rodzica" disabled>↑</button></div>
+      <textarea aria-label="Opisz zmianę" placeholder="Co chcesz zmienić? Możesz też przeciągać elementy i rysować."></textarea>
+      <div class="row meta"><span data-count>0 gestów</span><div><button data-undo disabled>Cofnij gest</button> <button data-reset>Wyczyść</button></div></div>
+      <div class="row"><button class="send" data-send>Zastosuj z Luną ↗</button></div>
+      <div class="row account"><span>GPT-6 Luna · low</span><a href="/auth/login" target="_blank" rel="noopener" data-account>Continue with ChatGPT</a></div>
+      <div class="status" role="status" aria-live="polite"></div>
+    </section>`;
+  document.body.append(host);
+  const required = <T extends Element>(selector: string): T => {
+    const node = shadow.querySelector<T>(selector);
+    if (!node) throw new Error(`Missing harness control ${selector}`);
+    return node;
+  };
+  const outline = required<HTMLDivElement>(".outline");
+  const marker = required<HTMLDivElement>(".drop");
+  const svg = required<SVGSVGElement>("svg");
+  const input = required<HTMLTextAreaElement>("textarea");
+  const send = required<HTMLButtonElement>("[data-send]");
+  const abort = new AbortController();
+  const options = { signal: abort.signal, capture: true };
+  let mode: Mode = "select";
+  let selected: string | null = null;
+  let actions: VisualAction[] = [];
+  let strokes: Stroke[] = [];
+  let history: Snapshot[] = [];
+  let baseline = runtime.page;
+  let revision = initialRevision;
+  let busy = false;
+  let drag: {
+    id: string;
+    start: Point;
+    active: boolean;
+    drop: Drop | null;
+  } | null = null;
+  let stroke: Stroke | null = null;
+
+  function status(message: string, error = false): void {
+    const node = required<HTMLDivElement>(".status");
+    node.textContent = message;
+    node.dataset["error"] = String(error);
+  }
+  function remember(): void {
+    history.push({
+      page: runtime.page,
+      actions: structuredClone(actions),
+      strokes: structuredClone(strokes),
+      selected,
+    });
+    if (history.length > 30) history.shift();
+  }
+  function addAction(action: VisualAction): void {
+    if (actions.length >= 100)
+      throw new Error("Wyślij bieżące gesty przed dodaniem kolejnych.");
+    actions.push(action);
+  }
+  function refresh(): void {
+    const element = selected ? runtime.element(selected) : undefined;
+    outline.style.display = element && mode !== "browse" ? "block" : "none";
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      Object.assign(outline.style, {
+        left: `${rect.x}px`,
+        top: `${rect.y}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+      });
+    }
+    required("[data-selection]").textContent = selected
+      ? `${findNode(runtime.page.root, selected)?.tag ?? ""} #${selected}`
+      : "Wybierz element strony";
+    required<HTMLButtonElement>("[data-parent]").disabled =
+      !selected || !parentOf(runtime.page.root, selected);
+    required("[data-count]").textContent = `${actions.length} gestów`;
+    required<HTMLButtonElement>("[data-undo]").disabled =
+      busy || history.length === 0;
+    svg.replaceChildren();
+    for (const line of strokes) {
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "polyline",
+      );
+      path.setAttribute(
+        "points",
+        line.points
+          .map((point) => `${point.x - scrollX},${point.y - scrollY}`)
+          .join(" "),
+      );
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", line.color);
+      path.setAttribute("stroke-width", String(line.width));
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      svg.append(path);
+    }
+  }
+  function select(id: string): void {
+    if (selected !== id) {
+      remember();
+      if (actions.at(-1)?.type === "select") actions.pop();
+      addAction({ type: "select", element: runtime.reference(id) });
+    }
+    selected = id;
+    refresh();
+  }
+  function setMode(next: Mode): void {
+    mode = next;
+    drag = null;
+    marker.style.display = "none";
+    for (const button of shadow.querySelectorAll<HTMLButtonElement>(
+      "[data-mode]",
+    ))
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset["mode"] === mode),
+      );
+    runtime.mount.style.cursor =
+      mode === "draw" ? "crosshair" : mode === "select" ? "default" : "";
+    runtime.mount.style.userSelect = mode === "browse" ? "" : "none";
+    refresh();
+  }
+  function pageElement(target: EventTarget | null): HTMLElement | undefined {
+    const element =
+      target instanceof Element
+        ? target.closest<HTMLElement>("[data-ripple-id]")
+        : null;
+    return element && runtime.mount.contains(element) ? element : undefined;
+  }
+  function block(event: Event): void {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+  function inPanel(event: Event): boolean {
+    return event.composedPath().includes(host);
+  }
+  function point(event: PointerEvent): Point {
+    return { x: event.clientX + scrollX, y: event.clientY + scrollY };
+  }
+
+  window.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (
+        busy ||
+        inPanel(event) ||
+        mode === "browse" ||
+        event.button !== 0 ||
+        !pageElement(event.target)
+      )
+        return;
+      block(event);
+      if (mode === "draw") {
+        remember();
+        stroke = { points: [point(event)], color: "#8060d8", width: 3 };
+        strokes.push(stroke);
+      } else {
+        const element = pageElement(event.target)!;
+        let id = element.dataset["rippleId"]!;
+        if (selected && runtime.element(selected)?.contains(element))
+          id = selected;
+        select(id);
+        drag = { id, start: point(event), active: false, drop: null };
+      }
+      refresh();
+    },
+    options,
+  );
+
+  window.addEventListener(
+    "pointermove",
+    (event) => {
+      if (stroke) {
+        block(event);
+        if (stroke.points.length < 2000) stroke.points.push(point(event));
+        refresh();
+        return;
+      }
+      if (!drag) return;
+      if (
+        Math.hypot(
+          point(event).x - drag.start.x,
+          point(event).y - drag.start.y,
+        ) < 6 &&
+        !drag.active
+      )
+        return;
+      block(event);
+      drag.active = true;
+      drag.drop = null;
+      marker.style.display = "none";
+      const target = pageElement(
+        document.elementFromPoint(event.clientX, event.clientY),
+      );
+      const source = runtime.element(drag.id);
+      if (
+        !target ||
+        !source ||
+        source.contains(target) ||
+        target.contains(source)
+      )
+        return;
+      const parent = target.parentElement;
+      if (!parent?.dataset["rippleId"]) return;
+      const rect = target.getBoundingClientRect();
+      const horizontal =
+        getComputedStyle(parent).display === "flex" &&
+        getComputedStyle(parent).flexDirection.startsWith("row");
+      const before = horizontal
+        ? event.clientX < rect.x + rect.width / 2
+        : event.clientY < rect.y + rect.height / 2;
+      const siblings = Array.from(parent.children) as HTMLElement[];
+      const following = siblings[siblings.indexOf(target) + 1];
+      drag.drop = {
+        parentId: parent.dataset["rippleId"],
+        beforeId: before
+          ? target.dataset["rippleId"]!
+          : (following?.dataset["rippleId"] ?? null),
+      };
+      Object.assign(
+        marker.style,
+        horizontal
+          ? {
+              display: "block",
+              left: `${before ? rect.left : rect.right}px`,
+              top: `${rect.top}px`,
+              width: "3px",
+              height: `${rect.height}px`,
+            }
+          : {
+              display: "block",
+              left: `${rect.left}px`,
+              top: `${before ? rect.top : rect.bottom}px`,
+              width: `${rect.width}px`,
+              height: "3px",
+            },
+      );
+    },
+    options,
+  );
+
+  function finish(event: PointerEvent): void {
+    if (stroke) {
+      block(event);
+      try {
+        addAction({ type: "draw", stroke: structuredClone(stroke) });
+      } catch (error) {
+        status(String(error), true);
+      }
+      stroke = null;
+    }
+    if (drag?.active && drag.drop) {
+      block(event);
+      const { id, drop } = drag;
+      try {
+        const action: VisualAction = {
+          type: "move",
+          element: runtime.reference(id),
+          parent: runtime.reference(drop.parentId),
+          before: drop.beforeId ? runtime.reference(drop.beforeId) : null,
+        };
+        remember();
+        runtime.move(id, drop.parentId, drop.beforeId);
+        addAction(action);
+        status(
+          "Nowy układ jest podglądem. Zastosuj go z Luną, aby zapisać stronę.",
+        );
+      } catch (error) {
+        status(
+          error instanceof Error
+            ? error.message
+            : "Nie można przenieść elementu.",
+          true,
+        );
+      }
+    }
+    drag = null;
+    marker.style.display = "none";
+    refresh();
+  }
+  window.addEventListener("pointerup", finish, options);
+  window.addEventListener(
+    "pointercancel",
+    () => {
+      drag = null;
+      stroke = null;
+      marker.style.display = "none";
+      refresh();
+    },
+    options,
+  );
+  window.addEventListener(
+    "click",
+    (event) => {
+      if (mode !== "browse" && !inPanel(event) && pageElement(event.target))
+        block(event);
+    },
+    options,
+  );
+  window.addEventListener(
+    "dragstart",
+    (event) => {
+      if (mode !== "browse" && !inPanel(event)) block(event);
+    },
+    options,
+  );
+  window.addEventListener("scroll", refresh, options);
+  window.addEventListener("resize", refresh, options);
+  runtime.mount.addEventListener("ripple:render", refresh, {
+    signal: abort.signal,
+  });
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape" && !busy) setMode("browse");
+    },
+    { signal: abort.signal },
+  );
+
+  for (const button of shadow.querySelectorAll<HTMLButtonElement>(
+    "[data-mode]",
+  )) {
+    button.addEventListener("click", () => {
+      if (!busy) setMode(button.dataset["mode"] as Mode);
+    });
+  }
+  required("[data-parent]").addEventListener("click", () => {
+    const parent = selected ? parentOf(runtime.page.root, selected) : undefined;
+    if (parent && !busy) select(parent.id);
+  });
+  required("[data-collapse]").addEventListener("click", () => {
+    const panel = required<HTMLElement>(".panel");
+    const collapsed = panel.dataset["collapsed"] !== "true";
+    panel.dataset["collapsed"] = String(collapsed);
+    const button = required<HTMLButtonElement>("[data-collapse]");
+    button.textContent = collapsed ? "+" : "−";
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute(
+      "aria-label",
+      collapsed ? "Rozwiń panel" : "Zwiń panel",
+    );
+  });
+  required("[data-undo]").addEventListener("click", () => {
+    if (busy) return;
+    const previous = history.pop();
+    if (previous) {
+      actions = previous.actions;
+      strokes = previous.strokes;
+      selected = previous.selected;
+      runtime.replace(previous.page);
+      refresh();
+    }
+  });
+  required("[data-reset]").addEventListener("click", () => {
+    if (busy) return;
+    actions = [];
+    strokes = [];
+    history = [];
+    selected = null;
+    input.value = "";
+    runtime.replace(baseline);
+    status("");
+    refresh();
+  });
+
+  function schematic(): string | undefined {
+    if (!strokes.length) return undefined;
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 1440 / innerWidth, 1200 / innerHeight);
+    canvas.width = Math.round(innerWidth * scale);
+    canvas.height = Math.round(innerHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) return undefined;
+    context.scale(scale, scale);
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, innerWidth, innerHeight);
+    context.font = "11px monospace";
+    for (const element of runtime.mount.querySelectorAll<HTMLElement>(
+      "[data-ripple-id]",
+    )) {
+      const rect = element.getBoundingClientRect();
+      context.strokeStyle = "#b8c1bb";
+      context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      context.fillStyle = "#3e4941";
+      context.fillText(
+        `${element.dataset["rippleId"]} ${element.tagName.toLowerCase()}`,
+        rect.x + 4,
+        rect.y + 13,
+      );
+    }
+    for (const line of strokes) {
+      context.beginPath();
+      context.strokeStyle = line.color;
+      context.lineWidth = line.width;
+      line.points.forEach((p, index) => {
+        if (index === 0) context.moveTo(p.x - scrollX, p.y - scrollY);
+        else context.lineTo(p.x - scrollX, p.y - scrollY);
+      });
+      context.stroke();
+    }
+    return canvas.toDataURL("image/png");
+  }
+
+  async function refreshAccount(): Promise<void> {
+    try {
+      const response = await fetch("/api/state");
+      if (!response.ok) return;
+      const state = (await response.json()) as ServerState;
+      const link = required<HTMLAnchorElement>("[data-account]");
+      link.textContent = state.account
+        ? (state.account.email ?? "ChatGPT połączony")
+        : "Continue with ChatGPT";
+      link.title = state.account
+        ? "Zaloguj ponownie do wybranego konta ChatGPT"
+        : "Połącz własną subskrypcję ChatGPT";
+    } catch {
+      /* The visible edit request reports connectivity errors. */
+    }
+  }
+  window.addEventListener(
+    "focus",
+    () => {
+      void refreshAccount();
+    },
+    { signal: abort.signal },
+  );
+  void refreshAccount();
+
+  send.addEventListener("click", () => {
+    void submit();
+  });
+  async function submit(): Promise<void> {
+    if (busy) return;
+    if (!input.value.trim() && actions.length === 0) {
+      status("Opisz zmianę, zaznacz element albo narysuj uwagę.");
+      return;
+    }
+    busy = true;
+    send.disabled = true;
+    send.textContent = "Luna pracuje…";
+    status("Przekazuję stronę i gesty do GPT-6 Luna.");
+    refresh();
+    try {
+      const intent: VisualIntent = {
+        version: 1,
+        baseRevision: revision,
+        instruction: input.value,
+        page: {
+          url: location.href,
+          title: document.title,
+          width: innerWidth,
+          height: innerHeight,
+          scrollX,
+          scrollY,
+        },
+        actions,
+        preview: runtime.page,
+      };
+      const annotation = schematic();
+      if (annotation) intent.annotation = annotation;
+      const response = await fetch("/api/change", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-ripple-request": "1",
+        },
+        body: JSON.stringify(intent),
+      });
+      const result = (await response.json()) as {
+        document?: RipplePage;
+        revision?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.document || !result.revision)
+        throw new Error(result.error ?? "Nie udało się zapisać zmiany.");
+      revision = result.revision;
+      baseline = result.document;
+      actions = [];
+      strokes = [];
+      history = [];
+      selected = null;
+      input.value = "";
+      runtime.replace(result.document);
+      status(`Zmiany zapisane w ${runtime.sourceFile}.`);
+    } catch (error) {
+      status(
+        error instanceof Error ? error.message : "Żądanie nie powiodło się.",
+        true,
+      );
+    } finally {
+      busy = false;
+      send.disabled = false;
+      send.textContent = "Zastosuj z Luną ↗";
+      refresh();
+    }
+  }
+  setMode("select");
+  return {
+    destroy() {
+      abort.abort();
+      host.remove();
+      runtime.mount.style.cursor = "";
+      runtime.mount.style.userSelect = "";
+    },
+  };
+}

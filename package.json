@@ -11,7 +11,9 @@
   },
   "scripts": {
     "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run build --workspace @ripple/core && npm run typecheck --workspaces",
+    "test": "npm run build && node --test packages/core/test/*.test.mjs",
+    "dev": "npm run build && cargo run -p ripple-dev --",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

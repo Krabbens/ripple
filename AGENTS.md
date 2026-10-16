@@ -2,6 +2,18 @@
 
 Projekt rozwijamy w Rust i TypeScript. Rozmawiaj z użytkownikiem po polsku.
 
+## Kierunek produktu
+
+- Ripple ma własny runtime stron i osadzony harness deweloperski.
+- W trybie deweloperskim elementy mają być zaznaczane, przeciągane między inne
+  elementy oraz opisywane rysunkami i tekstem.
+- Używamy bezpośrednio modeli z własnej subskrypcji ChatGPT przez OAuth.
+  Nie uruchamiaj Codex CLI, SDK ani app-server jako agenta Ripple.
+- Żądany model to `gpt-6-luna`, reasoning effort `low`. Nie zmieniaj modelu po cichu.
+- OAuth i tokeny należą do lokalnego procesu Rust. Przeglądarka dostaje tylko
+  podstawowe informacje o koncie i stan edytora.
+- Źródłem strony w prototypie jest `ripple.page.json`; elementy mają stałe ID.
+
 ## Układ i narzędzia
 
 - Rust: Cargo workspace, edition 2024, toolchain z `rust-toolchain.toml`.
