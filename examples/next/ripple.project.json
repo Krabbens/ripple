@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "entrypoints": ["app/page.tsx"],
+  "sources": ["app", "next.config.mjs", "package.json", "tsconfig.json"],
+  "devOrigins": ["http://127.0.0.1:3000"],
+  "checks": [
+    {
+      "name": "Next build",
+      "command": [
+        "npm",
+        "exec",
+        "--offline",
+        "--",
+        "next",
+        "build",
+        "--webpack"
+      ],
+      "timeoutSeconds": 120
+    }
+  ],
+  "instructions": "Mały przykład Next App Router. Zachowaj granice use client, stan i design. Ripple montuje się tylko w dev."
+}

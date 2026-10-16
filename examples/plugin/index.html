@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ripple</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f4f3ed;
+        color: #14271f;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "@ripple/core": "/modules/core/index.js",
+          "@ripple/harness": "/modules/harness/index.js",
+          "@ripple/plugin": "/modules/plugin/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <main
+        id="page"
+        style="max-width:1160px;margin:0 auto;padding:36px clamp(24px, 4vw, 52px) 120px;font-family:&#x27;SF Pro Display&#x27;, &#x27;Helvetica Neue&#x27;, Arial, sans-serif;color:#2f3437"
+        data-ripple-source="examples/plugin/index.html"
+      >
+        <header
+          id="navigation"
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #eaeaea;
+            gap: 20px;
+          "
+        >
+          <span
+            id="wordmark"
+            style="font-size: 26px; font-weight: 600; letter-spacing: -1px"
+            >ripple</span
+          >
+          <span id="navigation-note" style="font-size: 13px; color: #787774"
+            >Projekt przykładowy</span
+          >
+        </header>
+        <section id="hero" style="padding: 68px 0 64px; max-width: 800px">
+          <h1
+            id="hero-title"
+            style="font-family:&#x27;Iowan Old Style&#x27;, &#x27;Palatino Linotype&#x27;, Georgia, serif;font-size:clamp(44px, 6.4vw, 76px);font-weight:400;line-height:1.08;letter-spacing:-0.035em;margin:0 0 26px;max-width:680px;animation:title-arrive 900ms cubic-bezier(.2,.8,.2,1) both"
+          >
+            Małe gesty. Wielka zmiana.
+          </h1>
+          <p
+            id="hero-description"
+            style="
+              font-size: 17px;
+              line-height: 1.6;
+              max-width: 480px;
+              color: #2f3437;
+              margin: 0 0 30px;
+            "
+          >
+            Przeciągnij pomysł po ekranie. Zaznacz, przesuń, naszkicuj — a
+            Ripple zamieni Twój gest w nową stronę.
+          </p>
+          <a
+            id="hero-action"
+            href="#workflow"
+            style="
+              display: inline-block;
+              text-decoration: none;
+              color: #ffffff;
+              background: #111111;
+              padding: 13px 20px;
+              border-radius: 6px;
+              font-size: 14px;
+              font-weight: 500;
+            "
+            >Zobacz, jak to działa</a
+          >
+        </section>
+        <section id="workflow">
+          <div
+            id="workflow-heading"
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: baseline;
+              border-top: 1px solid #eaeaea;
+              padding: 24px 0;
+              gap: 16px;
+              flex-wrap: wrap;
+            "
+          >
+            <h2
+              id="workflow-title"
+              style="
+                font-size: 18px;
+                font-weight: 500;
+                margin: 0;
+                line-height: 1.4;
+              "
+            >
+              Zobacz pomysł w ruchu.
+            </h2>
+            <span id="workflow-count" style="font-size: 12px; color: #787774"
+              >Trzy kroki, jedna płynna zmiana</span
+            >
+          </div>
+          <div
+            id="cards"
+            style="
+              display: grid;
+              grid-template-columns: repeat(
+                auto-fit,
+                minmax(min(100%, 360px), 1fr)
+              );
+              gap: 16px;
+            "
+          >
+            <article
+              id="card-select"
+              style="
+                background: #ffffff;
+                border: 1px solid #eaeaea;
+                border-radius: 8px;
+                padding: 28px;
+                min-height: 200px;
+                grid-column: 1 / -1;
+              "
+            >
+              <span id="select-number" style="font-size: 13px; color: #787774"
+                >01 / Zaznaczanie</span
+              >
+              <h3
+                id="select-title"
+                style="font-family:&#x27;Iowan Old Style&#x27;, Georgia, serif;font-size:30px;font-weight:400;letter-spacing:-0.025em;line-height:1.15;margin:24px 0 14px"
+              >
+                Zacznij od jednego fragmentu.
+              </h3>
+              <p
+                id="select-body"
+                style="
+                  font-size: 15px;
+                  line-height: 1.6;
+                  color: #2f3437;
+                  margin: 0;
+                  max-width: 540px;
+                "
+              >
+                Wskaż nagłówek, przycisk albo całą sekcję. Pomysł nie musi być
+                gotowy — wystarczy pierwszy gest.
+              </p>
+            </article>
+            <article
+              id="card-move"
+              style="
+                background: #fbfbfa;
+                border: 1px solid #eaeaea;
+                border-radius: 8px;
+                padding: 28px;
+                min-height: 220px;
+                background-image: linear-gradient(
+                  110deg,
+                  #fbfbfa 35%,
+                  #f0efeb 50%,
+                  #fbfbfa 65%
+                );
+                background-size: 220% 100%;
+                animation: shimmer 7s ease-in-out infinite;
+              "
+            >
+              <span id="move-number" style="font-size: 13px; color: #787774"
+                >02 / Układ</span
+              >
+              <h3
+                id="move-title"
+                style="font-family:&#x27;Iowan Old Style&#x27;, Georgia, serif;font-size:30px;font-weight:400;letter-spacing:-0.025em;line-height:1.15;margin:24px 0 14px"
+              >
+                Nadaj mu nowe miejsce.
+              </h3>
+              <p
+                id="move-body"
+                style="
+                  font-size: 15px;
+                  line-height: 1.6;
+                  color: #2f3437;
+                  margin: 0;
+                  max-width: 540px;
+                "
+              >
+                Przeciągnij element tam, gdzie pasuje. Ripple zapisze nowy układ
+                w kodzie strony.
+              </p>
+            </article>
+            <article
+              id="card-draw"
+              style="
+                background: #e1f3fe;
+                border: 1px solid #eaeaea;
+                border-radius: 8px;
+                padding: 28px;
+                min-height: 220px;
+                animation: card-float 4s ease-in-out infinite;
+              "
+            >
+              <span id="draw-number" style="font-size: 13px; color: #787774"
+                >03 / Szkic</span
+              >
+              <h3
+                id="draw-title"
+                style="font-family:&#x27;Iowan Old Style&#x27;, Georgia, serif;font-size:30px;font-weight:400;letter-spacing:-0.025em;line-height:1.15;margin:24px 0 14px"
+              >
+                Pokaż to, czego brakuje.
+              </h3>
+              <p
+                id="draw-body"
+                style="
+                  font-size: 15px;
+                  line-height: 1.6;
+                  color: #2f3437;
+                  margin: 0;
+                  max-width: 540px;
+                "
+              >
+                Zakreśl obszar, połącz dwa miejsca albo naszkicuj nowy układ.
+                Ruch pomaga uchwycić myśl.
+              </p>
+            </article>
+          </div>
+        </section>
+        <footer
+          id="footer"
+          style="
+            margin-top: 50px;
+            padding-top: 24px;
+            border-top: 1px solid #eaeaea;
+            font-size: 14px;
+            color: #787774;
+          "
+        >
+          Pomysły płyną lepiej, kiedy możesz je pokazać.
+        </footer>
+      </main>
+    </div>
+    <script type="module">
+      import { mountRipple } from "@ripple/plugin";
+      mountRipple({
+        mount: document.querySelector("#app"),
+        sourceFile: "examples/plugin/index.html",
+        reserveSpace: true,
+        onApplied: (result) => {
+          if (!result.rebuildRequired) setTimeout(() => location.reload(), 900);
+        },
+      });
+    </script>
+  </body>
+</html>

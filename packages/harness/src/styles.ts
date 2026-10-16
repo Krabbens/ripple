@@ -49,4 +49,15 @@ textarea::placeholder { color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) { button { transition: transform 120ms ease; } .panel { animation: panel-enter 220ms cubic-bezier(.16,1,.3,1); } @keyframes panel-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 979px) { .panel { top: auto; right: 16px; bottom: 16px; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 18px; } .panel[data-collapsed=true] { top: auto; bottom: 16px; } .intro { margin: 12px 0; } .tools { margin-bottom: 14px; } .tools button { flex-direction: row; min-height: 44px; } .compose { flex: none; min-height: 0; margin-top: 16px; } textarea { min-height: 88px; height: 88px; } .model { margin-top: 14px; padding-top: 12px; } }
+
+.progress { margin-top:16px; }
+.progress[hidden] { display:none; }
+.progress-meta { display:flex; justify-content:space-between; gap:12px; font-size:12px; color:#5c615b; margin-bottom:8px; }
+progress { width:100%; height:5px; display:block; appearance:none; border:0; border-radius:2px; overflow:hidden; background:#e8e7e0; }
+progress::-webkit-progress-bar { background:#e8e7e0; }
+progress::-webkit-progress-value { background:#506c60; }
+progress::-moz-progress-bar { background:#506c60; }
+.progress[data-active="true"] progress { animation:ripple-pulse 1.4s ease-in-out infinite; }
+@keyframes ripple-pulse { 50% { opacity:.4; } }
+@media (prefers-reduced-motion:reduce) { .progress[data-active="true"] progress { animation:none; } }
 `;

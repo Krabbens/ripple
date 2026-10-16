@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "entrypoints": ["src/pages/index.astro"],
+  "sources": ["src", "astro.config.mjs"],
+  "devOrigins": ["http://127.0.0.1:4321"],
+  "checks": [
+    {
+      "name": "Astro build",
+      "command": ["npm", "exec", "--offline", "--", "astro", "build"],
+      "timeoutSeconds": 60
+    }
+  ],
+  "instructions": "Mały przykład Astro. Zachowaj design, pracuj na źródle .astro. Integracja Ripple działa tylko w dev."
+}

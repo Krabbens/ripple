@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 repository.workspace = true
-description = "Local development server for the Ripple runtime."
+description = "Local OAuth and source-editing bridge for the Ripple development plugin."
 
 [dependencies]
 ripple-core = { path = "../ripple-core" }

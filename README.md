@@ -1,10 +1,13 @@
 # Ripple
 
-Framework w Rust i TypeScript z własnym runtime stron i osadzonym trybem
-deweloperskim. Zaznaczasz element, przeciągasz go albo rysujesz uwagę, a GPT-6 Luna
-przekłada ten kontekst na zmianę strony i kodu projektu.
+Plugin deweloperski do Astro, React/Vite i Next.js. Zaznaczasz element na swojej
+stronie, przeciągasz go albo rysujesz uwagę. GPT-6 Luna dostaje kontekst i poprawia
+kod źródłowy. Lokalny proces Rust sprawdza poprawkę i zapisuje ją w projekcie.
 
-## Uruchomienie prototypu
+Ripple korzysta z Twojej subskrypcji ChatGPT przez bezpośredni OAuth. Model:
+`gpt-6-luna`, `reasoning.effort: low`. Tokeny pozostają w procesie Rust.
+
+## Uruchomienie repozytorium
 
 Potrzebne są Rust stable przez `rustup` oraz Node.js 24+ z npm.
 
@@ -13,163 +16,219 @@ npm ci
 npm run dev
 ```
 
-Otwórz `http://127.0.0.1:4310`. Strona działa przed logowaniem. W panelu:
+Otwórz [127.0.0.1:4310](http://127.0.0.1:4310). Playground jest zwykłą stroną HTML
+z osadzonym pluginem. Zachowuje design prototypu, ale jego źródłem jest
+`examples/plugin/index.html`.
 
-1. Wybierz **Zaznacz** i kliknij element. Przycisk **↑** zaznacza jego rodzica.
-2. Przeciągnij element przed lub za inny; znacznik pokazuje miejsce wstawienia.
-3. Wybierz **Rysuj**, aby dodać uwagi. **Cofnij gest** cofa lokalny podgląd.
-4. Użyj **Continue with ChatGPT**, aby połączyć własną subskrypcję.
-5. Dopisz instrukcję i wybierz **Zastosuj zmiany**.
+1. Kliknij element w trybie **Zaznacz**. Przycisk rodzica rozszerza zaznaczenie.
+2. Przeciągnij go przed lub za inny element. Znacznik określa miejsce wstawienia.
+3. Użyj **Rysuj**, aby dodać szkic, i opisz jedną zmianę.
+4. Połącz subskrypcję przez **Continue with ChatGPT**.
+5. Wybierz **Zastosuj zmiany**. Pasek pokazuje rzeczywiste etapy, obok biegnie czas.
 
-Model otrzymuje dokument, podgląd układu, stałe ID elementów, gesty i ewentualny
-schemat PNG z rysunkami. W trybie projektu Luna korzysta też z lokalnych narzędzi
-do czytania i edycji źródeł oraz uruchamiania kontroli. Rust zapisuje sprawdzone
-zmiany, a runtime wyświetla nowy dokument. **Wyczyść** odrzuca niezapisany
-podgląd. Panel można zwinąć przyciskiem **Zwiń panel**; na telefonie startuje zwinięty.
+Przeciągnięcie zapisuje zamiar zmiany w źródle. Plugin nie przestawia DOM-u Reacta
+ani nie przejmuje stanu komponentów. Po zapisie widok odświeża mechanizm HMR
+aplikacji. **Cofnij gest** i **Wyczyść** dotyczą niewysłanych gestów.
+
+## Przykłady frameworków
+
+Zbuduj paczki przez `npm run build`. Uruchom jeden serwer Ripple i odpowiedni
+frontend w drugim terminalu:
+
+| Framework  | Serwer Ripple                                                             | Frontend            | Adres                   |
+| ---------- | ------------------------------------------------------------------------- | ------------------- | ----------------------- |
+| React/Vite | `cargo run -p ripple-dev -- --project examples/react/ripple.project.json` | `npm run dev:react` | `http://127.0.0.1:5173` |
+| Astro      | `cargo run -p ripple-dev -- --project examples/astro/ripple.project.json` | `npm run dev:astro` | `http://127.0.0.1:4321` |
+| Next.js    | `cargo run -p ripple-dev -- --project examples/next/ripple.project.json`  | `npm run dev:next`  | `http://127.0.0.1:3000` |
+
+Zatrzymaj domyślny serwer przed uruchomieniem przykładu. Jeden proces korzysta
+z magazynu kont, więc kolejne logowanie nie jest potrzebne. Manifest powinien
+należeć do aplikacji, której pliki chcesz edytować.
+
+## Integracja
+
+Paczki są na razie lokalnymi workspace'ami, nie wydaniem w rejestrze npm.
+`@ripple/plugin` udostępnia wspólny panel i adaptery. Do innego repozytorium można
+przenieść zbudowane paczki jako lokalne archiwa:
 
 ```sh
-# Inny port lub plik strony
-npm run dev -- --port 4311 --page moja-strona.page.json
-
-# Inny projekt
-npm run dev -- --project /sciezka/aplikacja/ripple.project.json
+npm run build
+mkdir -p /tmp/ripple-packages
+npm pack --workspace @ripple/core --workspace @ripple/harness --workspace @ripple/plugin --pack-destination /tmp/ripple-packages
+# W aplikacji:
+npm install --save-dev /tmp/ripple-packages/ripple-*.tgz
 ```
 
-## Praca fullstack
+### Astro
 
-Ripple automatycznie używa `ripple.project.json` z bieżącego katalogu. Bez manifestu
-lub przy jawnym `--page` działa prostsza edycja samego dokumentu strony. Dołączony
-manifest pozwala rozwijać samo repozytorium frameworka: `crates/`, `packages/`,
-`examples/` i `migrations/` oraz pliki Cargo/npm. Własna aplikacja powinna mieć swój
-manifest w swoim katalogu głównym, np.:
+```js
+// astro.config.mjs
+import { defineConfig } from "astro/config";
+import ripple from "@ripple/plugin/astro";
+
+export default defineConfig({
+  integrations: [ripple()],
+});
+```
+
+Integracja wstrzykuje panel tylko dla `astro dev`. Obsługuje też zmianę strony
+przez Astro ClientRouter.
+
+### React / Vite
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import ripple from "@ripple/plugin/vite";
+
+export default defineConfig({ plugins: [ripple()] });
+```
+
+Można też umieścić komponent `Ripple` z `@ripple/plugin/react` obok aplikacji.
+Nie używaj obu adapterów jednocześnie. Panel montuje się po hydracji i sprząta
+nasłuchy przy odmontowaniu, również w React StrictMode.
+
+### Next.js App Router
+
+```tsx
+// app/layout.tsx, wewnątrz body, obok children
+import { Ripple } from "@ripple/plugin/next";
+
+// ...
+{
+  process.env.NODE_ENV !== "production" && <Ripple />;
+}
+```
+
+`Ripple` jest komponentem klienckim, podczas SSR zwraca `null`. W produkcji nie
+montuje panelu. Przy lokalnych paczkach workspace użyj `transpilePackages` jak
+w `examples/next/next.config.mjs`.
+
+### Wskazanie źródła
+
+Dodaj ścieżkę względem katalogu manifestu do kontenera komponentu:
+
+```tsx
+<section data-ripple-source="src/components/Contact.tsx">
+  <h2>Porozmawiajmy</h2>
+</section>
+```
+
+Dzieci dziedziczą najbliższy znacznik. Bez niego plugin korzysta z opcji
+`sourceFile` adaptera albo `entrypoints` manifestu. To jawne powiązanie DOM-u
+ze źródłem; automatyczne mapowanie wszystkich komponentów przez kompilator
+nie jest jeszcze zaimplementowane. `data-ripple-ignore` wyłącza fragment
+z zaznaczania.
+
+Adaptery przyjmują `endpoint` (domyślnie `http://127.0.0.1:4310`), `sourceFile`
+i `reserveSpace`. Panel domyślnie nakłada się na aplikację; `reserveSpace: true`
+odsuwa widok na szerokim ekranie. Na małych ekranach startuje zwinięty.
+Jawne `mountRipple()` z `@ripple/plugin` nadaje się do własnego wejścia dev.
+
+## Projekt fullstack i małe kroki
+
+`ripple.project.json` określa pliki, które Luna może zmieniać, adresy lokalnego
+frontendu i komendy sprawdzające projekt. Przykład:
 
 ```json
 {
   "version": 1,
-  "page": "ripple.page.json",
+  "entrypoints": ["src/app/page.tsx"],
   "sources": [
-    "ripple.page.json",
+    "src",
     "server",
-    "web",
     "migrations",
-    "Cargo.toml",
-    "Cargo.lock",
     "package.json",
-    "package-lock.json",
-    "tsconfig.json"
+    "tsconfig.json",
+    "Cargo.toml",
+    "Cargo.lock"
   ],
+  "devOrigins": ["http://127.0.0.1:3000"],
   "checks": [
     {
-      "name": "backend",
-      "command": ["cargo", "test", "--locked"],
-      "timeoutSeconds": 120
+      "name": "TypeScript",
+      "command": ["npm", "run", "typecheck"],
+      "timeoutSeconds": 60
     },
     {
-      "name": "frontend",
-      "command": ["npm", "run", "typecheck"],
+      "name": "Rust",
+      "command": ["cargo", "test", "--locked"],
       "timeoutSeconds": 120
     }
   ],
-  "instructions": "Backend Rust, frontend TypeScript. Zachowaj istniejące kontrakty API."
+  "instructions": "Frontend Next, backend Rust. Zachowaj istniejące kontrakty API."
 }
 ```
 
-Ścieżki odnoszą się do katalogu manifestu. `sources` zawiera pliki albo katalogi;
-może obejmować również katalog przyszłych migracji. Projekt musi zawierać wszystkie
-źródła i konfigurację potrzebne do jego sprawdzenia. Zależności trzeba wcześniej
-zainstalować. Na macOS/Linux wykonawca wykorzystuje główne `node_modules`, przekierowuje
-linki paczek workspace do kopii roboczej i współdzieli cache Cargo w `target/`.
+Ścieżki są względne wobec katalogu manifestu. Dodaj wszystkie źródła i konfiguracje
+potrzebne do kontroli; zainstaluj zależności przed uruchomieniem Ripple. Na macOS
+i Linux wykonawca wykorzystuje zależności z lokalnego i nadrzędnych `node_modules`, przekierowuje
+lokalne paczki workspace do kopii i współdzieli cache Cargo w `target/`.
 
-Luna ma narzędzia `list_files`, `read_file`, `write_file`, `delete_file` i `run_check`
-w namespace `workspace`. Może więc przejść od zaznaczonego formularza do handlera
-API, kodu klienta i pliku migracji SQL. Kontrola zwraca kod wyjścia i ograniczone
-logi; model może poprawić błąd i sprawdzić kod ponownie. To własna pętla narzędzi
-Ripple, korzystająca z [function calling](https://developers.openai.com/api/docs/guides/function-calling)
-w formie obsługiwanej przez [OAuth subskrypcji](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+Nowa ścieżka pluginu ma konkretne limity:
 
-Edycje trafiają do katalogu tymczasowego. Zapis do projektu następuje po zakończonej
-odpowiedzi i przejściu wszystkich kontroli na dokładnie tej wersji źródeł. Zmiana
-dowolnego źródła lub manifestu w trakcie pracy odrzuca zapis. Błąd odpowiedzi,
-przekroczenie limitu lub nieudane kontrole pozostawiają oryginalne źródła bez zmian.
-Panel pokazuje podsumowanie, zmienione pliki i wykonane kontrole.
+- Do 3 plików źródłowych i 64 KB kontekstu w kroku.
+- Jedna odpowiedź Luny; druga tylko wtedy, gdy model potrzebuje dodatkowego pliku.
+- Do 12 poprawek tekstu. Każdy zastępowany fragment musi wystąpić dokładnie raz.
+- 120 sekund na odpowiedzi modelu; osobny limit 1–120 sekund na każdą kontrolę.
 
-Narzędzia plikowe pomijają ukryte pliki, magazyn kont, klucze, pliki baz danych
-i wygenerowane katalogi; odrzucają wyjście poza `sources` oraz symlinki. Komendy
-kontrolne są zamrożone z manifestu, a model wybiera jedynie ich nazwę. Kopia robocza
-nie jest piaskownicą systemową: lokalne komendy i testy wykonują kod projektu
-z uprawnieniami dewelopera. Nie dziedziczą zmiennych środowiska z tokenami OAuth.
-Kontrole powinny używać testowej bazy; pliki migracji można edytować, lecz Ripple
-nie uruchamia automatycznie migracji na bazie aplikacji.
+Luna otrzymuje źródła od razu. Nie wykonuje osobnej rundy na każdy odczyt, zapis
+czy kontrolę. Po nieudanych kontrolach krok się kończy, bez długiej pętli napraw.
+Możesz zmienić instrukcję i wysłać mniejsze zadanie. API, backend Rust i migracje
+SQL mieszczą się w tym samym mechanizmie, jeśli należą do `sources`.
 
-Limity prototypu: 512 plików tekstowych UTF-8, 512 KB na plik, 8 MB źródeł,
-64 odpowiedzi modelu, 64 wywołania narzędzi, 10 minut na zadanie i do 120 sekund
-na pojedynczą kontrolę. Zawęź `sources`, jeśli repozytorium jest większe.
+Poprawki trafiają do kopii roboczej. Serwer zapisuje je po przejściu wszystkich
+kontroli na końcowej wersji źródeł. Zewnętrzna zmiana pliku lub manifestu w trakcie
+pracy odrzuca zapis. Błędy modelu i kontroli pozostawiają oryginały bez zmian.
+Przy utracie połączenia w czasie zapisu sprawdź pliki przed ponowieniem.
 
-Manifest i jego kontrole można sprawdzić bez logowania i zużywania subskrypcji:
+Konfigurację można sprawdzić bez OAuth i użycia modelu:
 
 ```sh
-cargo run --locked -p ripple-dev -- --project ripple.project.json --check
+cargo run -p ripple-dev -- --project ripple.project.json --check
 ```
 
-Zmiany dokumentu odświeżają widok od razu. Kod TypeScript trzeba przebudować,
-a proces backendu uruchomić ponownie; wynik kontroli z kopii nie instaluje jej
-artefaktów w aplikacji. W tym repozytorium zatrzymaj serwer i uruchom `npm run dev`.
-Automatyczny restart, typowany klient API, adapter bazy i sesje użytkowników
-aplikacji są kolejnymi częściami runtime. OAuth ChatGPT uwierzytelnia dewelopera
-korzystającego z modelu — aplikacja potrzebuje własnego logowania użytkowników.
+Serwer słucha na `127.0.0.1`. `devOrigins` dopuszcza dokładne lokalne originy HTTP;
+żądania zmiany wymagają originu i nagłówka `X-Ripple-Request`. Postęp wraca przez
+SSE: kontekst, model, kontrole, zapis, zakończenie. Pasek pokazuje etap, nie
+przewiduje procentu wygenerowanego kodu.
 
-## Model i logowanie
+Źródła mają limit 512 plików UTF-8, 512 KB na plik i 8 MB łącznie. Wykonawca
+pomija ukryte pliki, klucze, bazy danych i wygenerowane katalogi; odrzuca symlinki
+oraz ścieżki poza `sources`. Komendy kontrolne są zamrożone z manifestu. Kopia
+robocza nie jest piaskownicą systemową: testy wykonują kod projektu z uprawnieniami
+dewelopera, bez tokenów OAuth w środowisku. Używaj testowej bazy. Ripple edytuje
+pliki migracji, ale nie uruchamia migracji na bazie aplikacji.
 
-Ripple używa własnego OAuth i żądań HTTP, z domyślnym modelem `gpt-6-luna`
-i `reasoning.effort: low`. Nie wymaga instalacji Codexa ani klucza API.
+HMR dotyczy frontendu. Restart backendu, wdrożenie, adapter bazy i logowanie
+użytkowników Twojej aplikacji pozostają po stronie jej frameworka i narzędzi.
+OAuth ChatGPT służy deweloperowi do korzystania z modelu.
 
-Pierwsze logowanie korzysta z dynamicznej rejestracji klienta **Ripple**, PKCE
-i lokalnego callbacku na `127.0.0.1`. Host ma zapisany raz identyfikator UUIDv4
-w formacie `urn:uuid:…`. Starsze identyfikatory z prototypu są migrowane bez usuwania
-kont i tokenów. Tokeny pozostają w procesie Rust i chronionym
-pliku `~/.config/ripple/accounts.json`. `XDG_CONFIG_HOME` lub `RIPPLE_HOME` zmieniają
-lokalizację. Tylko jeden proces może jednocześnie korzystać z danego magazynu kont.
+## Logowanie i model
 
-Aktualny katalog modeli jest odczytywany dla zalogowanego konta. Jeśli konto nie
-udostępnia Luny, żądanie kończy się błędem; Ripple nie podstawia innego modelu.
+Ripple nie wymaga Codex CLI, SDK, app-server ani klucza API. Własny klient Rust
+stosuje opisany przez OpenAI przepływ [ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+i [bezpośredni Responses API](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference):
+PKCE, dynamiczna rejestracja klienta, lokalny callback, `store: false`, `stream: true`.
+Poprawki korzystają ze [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
 
-Integracja stosuje opisany przez OpenAI przepływ
-[ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
-oraz [bezpośredni Responses API](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference):
-`store: false`, `stream: true`, pełny kontekst w każdym żądaniu.
+Identyfikator hosta UUIDv4 i konta są przechowywane w chronionym
+`~/.config/ripple/accounts.json`. `XDG_CONFIG_HOME` lub `RIPPLE_HOME` zmieniają
+lokalizację. Proces weryfikuje podpis, issuer, audience, nonce i ważność ID tokenu.
+Katalog modeli konta jest buforowany przez 5 minut. Jeśli Luna nie jest dostępna,
+Ripple zwraca błąd i nie podstawia innego modelu.
 
-## Struktura
+## Kod i sprawdzanie
 
-UI edytora stosuje wariant `minimalist-ui` z [taste-skill](https://github.com/Leonxlnx/taste-skill).
+- `packages/plugin/`: adaptery Astro, React, Next, Vite i jawne wejście przeglądarkowe.
+- `packages/harness/`: panel w Shadow DOM, gesty i strumień postępu.
+- `packages/core/`: obserwacja DOM-u oraz kompatybilny runtime dokumentów.
+- `crates/ripple-core/`: OAuth, transport modelu, małe poprawki i kontrole źródeł.
+- `crates/ripple-dev/`: lokalny serwer i most do aplikacji.
+- `examples/`: zwykłe HTML oraz aplikacje React/Vite, Astro i Next.
+
+UI stosuje wariant `minimalist-ui` z [taste-skill](https://github.com/Leonxlnx/taste-skill).
 Przypięta kopia i licencja są w `.agents/skills/minimalist-ui/`.
-
-- `packages/core/` — format dokumentu, operacje na drzewie i renderer DOM.
-- `packages/harness/` — osadzony panel w Shadow DOM, zaznaczanie, przenoszenie
-  i rysowanie. Montowany jawnie tylko w punkcie wejścia deweloperskiego.
-- `crates/ripple-core/` — OAuth, magazyn kont, dokument, transport modeli i wykonawca
-  zmian w projekcie.
-- `crates/ripple-dev/` — lokalny serwer deweloperski.
-- `examples/playground/` — punkt wejścia przykładowej strony.
-- `ripple.page.json` — przykładowa strona i źródło zmian prototypu.
-- `ripple.project.json` — źródła i kontrole projektu fullstack.
-
-## Zakres pierwszej wersji
-
-Strony są drzewami dokumentu Ripple ze stylami inline. Ten prototyp obsługuje
-podstawowe elementy HTML. Logika TypeScript i Rust jest edytowana w plikach projektu,
-a nie osadzana w JSON-ie strony. Runtime nie ma jeszcze deklaratywnych powiązań
-z API ani adaptera bazy danych. Rysunki trafiają do modelu jako wektory oraz schemat PNG
-z granicami elementów, a nie zrzut wyglądu strony.
-
-Przenoszenie i cofanie działają na lokalnym podglądzie. Zapis wymaga zakończonej
-odpowiedzi modelu i poprawnego dokumentu. Zmieniona w międzyczasie wersja pliku
-powoduje odrzucenie odpowiedzi. Prototyp ma limit 500 elementów i 32 poziomów drzewa.
-Serwer słucha wyłącznie na `127.0.0.1`.
-
-Testy nie logują się na prawdziwe konto ani nie zużywają subskrypcji. Pełne
-potwierdzenie dostępu konta do Luny wymaga udanej, rzeczywistej odpowiedzi po OAuth.
-
-## Weryfikacja
 
 ```sh
 cargo fmt --all -- --check
@@ -178,7 +237,12 @@ cargo test --workspace --locked
 npm run format:check
 npm run typecheck
 npm test
+npm run build:examples
 ```
 
-Formatowanie: `cargo fmt --all` oraz `npm run format`.
-GitHub Actions wykonuje te kontrole. Lockfile'y są wersjonowane.
+GitHub Actions wykonuje te kontrole. Testy automatyczne nie używają prawdziwego
+konta ani subskrypcji. Lokalne próby z OAuth wymagają połączonego konta.
+
+Starszy prototyp z `ripple.page.json` i własnym rendererem pozostaje dostępny przez
+`npm run dev -- --page ripple.page.json`. Ma osobną, starszą pętlę narzędzi; limity
+małych kroków i SSE dotyczą pluginu. Nowe integracje nie wymagają dokumentu JSON.

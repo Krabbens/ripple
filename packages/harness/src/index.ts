@@ -1,17 +1,18 @@
-import { findNode, parentOf } from "@ripple/core";
 import type {
   RippleRuntime,
+  DomSurface,
   RipplePage,
   Stroke,
   Point,
   VisualAction,
-  VisualIntent,
 } from "@ripple/core";
 import { styles } from "./styles.js";
 import { icon } from "./icons.js";
+import { readChangeStream } from "./progress.js";
+import type { ChangeResult, ProgressEvent } from "./progress.js";
 
 interface ServerState {
-  document: RipplePage;
+  document: RipplePage | null;
   revision: string;
   account: { email: string | null; subject: string } | null;
   model: string;
@@ -20,7 +21,7 @@ interface ServerState {
 }
 type Mode = "browse" | "select" | "draw";
 interface Snapshot {
-  page: RipplePage;
+  page: RipplePage | null;
   actions: VisualAction[];
   strokes: Stroke[];
   selected: string | null;
@@ -30,11 +31,18 @@ interface Drop {
   beforeId: string | null;
 }
 
-/** Mount explicitly from the development entry point; production uses only the runtime. */
+export interface HarnessOptions {
+  endpoint?: string;
+  reserveSpace?: boolean;
+  onApplied?: (result: ChangeResult) => void;
+}
+/** Adapters mount this only in development. The host owns its DOM. */
 export function mountHarness(
-  runtime: RippleRuntime,
+  runtime: RippleRuntime | DomSurface,
   initialRevision: string,
+  settings: HarnessOptions = {},
 ): { destroy(): void } {
+  const endpoint = (settings.endpoint ?? "").replace(/\/$/, "");
   const host = document.createElement("ripple-devtools");
   host.style.cssText =
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
@@ -57,6 +65,11 @@ export function mountHarness(
         <div class="row meta"><span data-count>0 gestów</span><div><button data-undo disabled>Cofnij gest</button> <button data-reset>Wyczyść</button></div></div>
       </div>
       <button class="send" data-send>Zastosuj zmiany ${icon("send")}</button>
+      <div class="progress" hidden data-progress>
+        <div class="progress-meta"><span data-phase>Przygotowanie</span><span data-elapsed>0 s</span></div>
+        <progress aria-label="Postęp zmiany" max="4" value="0"></progress>
+        <p class="hint">Mały krok · do 3 plików · maks. 2 odpowiedzi Luny</p>
+      </div>
       <div class="model"><span>GPT-6 Luna</span><span>Myślenie: low</span></div>
       <div class="account"><a href="/auth/login" target="_blank" rel="noopener" data-account>Continue with ChatGPT</a></div>
       <p class="source" data-source></p>
@@ -77,19 +90,37 @@ export function mountHarness(
   const abort = new AbortController();
   const options = { signal: abort.signal, capture: true };
   const originalMargin = runtime.mount.style.marginRight;
+  const originalCursor = runtime.mount.style.cursor;
+  const originalUserSelect = runtime.mount.style.userSelect;
+  required<HTMLAnchorElement>("[data-account]").href = `${endpoint}/auth/login`;
+  let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+  const started = { at: 0 };
+  function progress(event: ProgressEvent): void {
+    required<HTMLElement>("[data-progress]").hidden = false;
+    required("[data-phase]").textContent = event.label;
+    const bar = required<HTMLProgressElement>("progress");
+    bar.max = event.total;
+    bar.value = event.step;
+    bar.setAttribute("aria-valuetext", event.label);
+    required<HTMLElement>("[data-progress]").dataset["active"] = String(
+      event.phase === "model",
+    );
+  }
   required("[data-source]").textContent = runtime.sourceFile;
   function syncCanvasInset(): void {
     const expanded =
       required<HTMLElement>(".panel").dataset["collapsed"] !== "true";
     runtime.mount.style.marginRight =
-      innerWidth >= 980 && expanded ? "360px" : originalMargin;
+      settings.reserveSpace !== false && innerWidth >= 980 && expanded
+        ? "360px"
+        : originalMargin;
   }
   let mode: Mode = "select";
   let selected: string | null = null;
   let actions: VisualAction[] = [];
   let strokes: Stroke[] = [];
   let history: Snapshot[] = [];
-  let baseline = runtime.page;
+  let baseline = runtime.kind === "document" ? runtime.page : null;
   let revision = initialRevision;
   let busy = false;
   let projectMode = false;
@@ -108,7 +139,7 @@ export function mountHarness(
   }
   function remember(): void {
     history.push({
-      page: runtime.page,
+      page: runtime.kind === "document" ? runtime.page : null,
       actions: structuredClone(actions),
       strokes: structuredClone(strokes),
       selected,
@@ -133,10 +164,14 @@ export function mountHarness(
       });
     }
     required("[data-selection]").textContent = selected
-      ? `${findNode(runtime.page.root, selected)?.tag ?? ""} #${selected}`
+      ? `${runtime.element(selected)?.tagName.toLowerCase() ?? ""} #${runtime.element(selected)?.id || selected}`
       : "Wybierz element strony";
     required<HTMLButtonElement>("[data-parent]").disabled =
-      !selected || !parentOf(runtime.page.root, selected);
+      !selected || !runtime.parent(selected);
+    required("[data-source]").textContent =
+      selected && runtime.element(selected)
+        ? runtime.reference(selected).source.file || "Źródło z entrypoints"
+        : runtime.sourceFile || "Źródło z entrypoints";
     const count = actions.length;
     const noun =
       count === 1
@@ -201,12 +236,9 @@ export function mountHarness(
     refresh();
   }
   function pageElement(target: EventTarget | null): HTMLElement | undefined {
-    const element =
-      target instanceof Element
-        ? target.closest<HTMLElement>("[data-ripple-id]")
-        : null;
-    return element && runtime.mount.contains(element) ? element : undefined;
+    return runtime.target(target);
   }
+
   function block(event: Event): void {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -236,9 +268,7 @@ export function mountHarness(
         strokes.push(stroke);
       } else {
         const element = pageElement(event.target)!;
-        let id = element.dataset["rippleId"]!;
-        if (selected && runtime.element(selected)?.contains(element))
-          id = selected;
+        const id = runtime.id(element);
         select(id);
         drag = { id, start: point(event), active: false, drop: null };
       }
@@ -281,7 +311,7 @@ export function mountHarness(
       )
         return;
       const parent = target.parentElement;
-      if (!parent?.dataset["rippleId"]) return;
+      if (!parent || !runtime.target(parent)) return;
       const rect = target.getBoundingClientRect();
       const horizontal =
         getComputedStyle(parent).display === "flex" &&
@@ -292,10 +322,12 @@ export function mountHarness(
       const siblings = Array.from(parent.children) as HTMLElement[];
       const following = siblings[siblings.indexOf(target) + 1];
       drag.drop = {
-        parentId: parent.dataset["rippleId"],
+        parentId: runtime.id(parent),
         beforeId: before
-          ? target.dataset["rippleId"]!
-          : (following?.dataset["rippleId"] ?? null),
+          ? runtime.id(target)
+          : following
+            ? runtime.id(following)
+            : null,
       };
       Object.assign(
         marker.style,
@@ -340,10 +372,13 @@ export function mountHarness(
           before: drop.beforeId ? runtime.reference(drop.beforeId) : null,
         };
         remember();
-        runtime.move(id, drop.parentId, drop.beforeId);
+        if (runtime.kind === "document")
+          runtime.move(id, drop.parentId, drop.beforeId);
         addAction(action);
         status(
-          "Nowy układ jest podglądem. Zastosuj go z Luną, aby zapisać stronę.",
+          runtime.kind === "dom"
+            ? "Miejsce zaznaczone. Zastosuj zmianę, aby Luna poprawiła kod komponentu."
+            : "Nowy układ jest podglądem. Zastosuj go z Luną, aby zapisać stronę.",
         );
       } catch (error) {
         status(
@@ -412,8 +447,8 @@ export function mountHarness(
     });
   }
   required("[data-parent]").addEventListener("click", () => {
-    const parent = selected ? parentOf(runtime.page.root, selected) : undefined;
-    if (parent && !busy) select(parent.id);
+    const parent = selected ? runtime.parent(selected) : undefined;
+    if (parent && !busy) select(parent);
   });
   function setCollapsed(collapsed: boolean): void {
     const panel = required<HTMLElement>(".panel");
@@ -440,7 +475,8 @@ export function mountHarness(
       actions = previous.actions;
       strokes = previous.strokes;
       selected = previous.selected;
-      runtime.replace(previous.page);
+      if (runtime.kind === "document" && previous.page)
+        runtime.replace(previous.page);
       refresh();
     }
   });
@@ -451,7 +487,7 @@ export function mountHarness(
     history = [];
     selected = null;
     input.value = "";
-    runtime.replace(baseline);
+    if (runtime.kind === "document" && baseline) runtime.replace(baseline);
     status("");
     refresh();
   });
@@ -468,15 +504,13 @@ export function mountHarness(
     context.fillStyle = "#fff";
     context.fillRect(0, 0, innerWidth, innerHeight);
     context.font = "11px monospace";
-    for (const element of runtime.mount.querySelectorAll<HTMLElement>(
-      "[data-ripple-id]",
-    )) {
+    for (const element of runtime.elements().slice(0, 500)) {
       const rect = element.getBoundingClientRect();
       context.strokeStyle = "#b8c1bb";
       context.strokeRect(rect.x, rect.y, rect.width, rect.height);
       context.fillStyle = "#3e4941";
       context.fillText(
-        `${element.dataset["rippleId"]} ${element.tagName.toLowerCase()}`,
+        `${runtime.id(element)} ${element.tagName.toLowerCase()}`,
         rect.x + 4,
         rect.y + 13,
       );
@@ -496,14 +530,17 @@ export function mountHarness(
 
   async function refreshAccount(): Promise<void> {
     try {
-      const response = await fetch("/api/state");
+      const response = await fetch(`${endpoint}/api/state`, {
+        signal: abort.signal,
+      });
       if (!response.ok) return;
       const state = (await response.json()) as ServerState;
       projectMode = Boolean(state.project);
+      if (!busy && actions.length === 0) revision = state.revision;
       const project = required<HTMLElement>("[data-project]");
       project.hidden = !projectMode;
       project.textContent = state.project
-        ? `Cały projekt · ${state.project.checks.join(" · ")}`
+        ? `Mały krok · do 3 plików · ${state.project.checks.join(" · ")}`
         : "";
       input.placeholder = projectMode
         ? "Np. podłącz formularz do API i dodaj zapis w bazie."
@@ -545,10 +582,21 @@ export function mountHarness(
         ? "Luna pracuje na projekcie. Przed zapisem uruchomi jego kontrole."
         : "Przekazuję stronę i gesty do GPT-6 Luna.",
     );
+    started.at = Date.now();
+    progress({
+      phase: "context",
+      label: "Przygotowuję kontekst",
+      step: 0,
+      total: 4,
+    });
+    elapsedTimer = setInterval(() => {
+      required("[data-elapsed]").textContent =
+        `${Math.floor((Date.now() - started.at) / 1000)} s`;
+    }, 1000);
     refresh();
     try {
-      const intent: VisualIntent = {
-        version: 1,
+      const intent = {
+        version: runtime.kind === "dom" ? 2 : 1,
         baseRevision: revision,
         instruction: input.value,
         page: {
@@ -560,62 +608,81 @@ export function mountHarness(
           scrollY,
         },
         actions,
-        preview: runtime.page,
+        ...(runtime.kind === "document" ? { preview: runtime.page } : {}),
+        annotation: schematic(),
       };
-      const annotation = schematic();
-      if (annotation) intent.annotation = annotation;
-      const response = await fetch("/api/change", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-ripple-request": "1",
+      const response = await fetch(
+        `${endpoint}${runtime.kind === "dom" ? "/api/plugin/change" : "/api/change"}`,
+        {
+          signal: abort.signal,
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-ripple-request": "1",
+          },
+          body: JSON.stringify(intent),
         },
-        body: JSON.stringify(intent),
-      });
-      const result = (await response.json()) as {
-        document?: RipplePage;
-        revision?: string;
-        error?: string;
-        summary?: string;
-        changes?: { path: string; kind: string }[];
-        checks?: { name: string; success: boolean }[];
-        rebuildRequired?: boolean;
-      };
-      if (!response.ok || !result.document || !result.revision)
+      );
+      const result: ChangeResult =
+        runtime.kind === "dom"
+          ? await readChangeStream(response, progress)
+          : ((await response.json()) as ChangeResult);
+      if (
+        !response.ok ||
+        !result.revision ||
+        (runtime.kind === "document" && !result.document)
+      )
         throw new Error(result.error ?? "Nie udało się zapisać zmiany.");
       revision = result.revision;
-      baseline = result.document;
+      baseline = result.document ?? null;
       actions = [];
       strokes = [];
       history = [];
       selected = null;
       input.value = "";
-      runtime.replace(result.document);
+      if (runtime.kind === "document" && result.document)
+        runtime.replace(result.document);
+      progress({
+        phase: "complete",
+        label: "Zapisano · gotowe",
+        step: 4,
+        total: 4,
+      });
+      settings.onApplied?.(result);
       status(
         result.changes
           ? `${result.summary ?? "Zmiany zapisane."}\n${result.changes.length ? `Pliki: ${result.changes.map((change) => change.path).join(", ")}.` : "Bez zmian w plikach."} Kontrole: ${result.checks?.map((check) => check.name).join(", ") ?? ""}.${result.rebuildRequired ? "\nPrzebuduj kod i uruchom ponownie aplikację, aby go wczytać." : ""}`
           : `Zmiany zapisane w ${runtime.sourceFile}.`,
       );
     } catch (error) {
+      required("[data-phase]").textContent = "Krok zatrzymany";
       status(
         error instanceof Error ? error.message : "Żądanie nie powiodło się.",
         true,
       );
     } finally {
+      if (elapsedTimer) clearInterval(elapsedTimer);
+      required<HTMLElement>("[data-progress]").dataset["active"] = "false";
       busy = false;
       send.disabled = false;
       send.innerHTML = `Zastosuj zmiany ${icon("send")}`;
       refresh();
     }
   }
+  const observer = new MutationObserver(() => {
+    if (!busy) refresh();
+  });
+  observer.observe(runtime.mount, { childList: true, subtree: true });
   setMode("select");
   setCollapsed(innerWidth < 980);
   return {
     destroy() {
       abort.abort();
+      observer.disconnect();
+      if (elapsedTimer) clearInterval(elapsedTimer);
       host.remove();
-      runtime.mount.style.cursor = "";
-      runtime.mount.style.userSelect = "";
+      runtime.mount.style.cursor = originalCursor;
+      runtime.mount.style.userSelect = originalUserSelect;
       runtime.mount.style.marginRight = originalMargin;
     },
   };

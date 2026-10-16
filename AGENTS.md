@@ -4,7 +4,9 @@ Projekt rozwijamy w Rust i TypeScript. Rozmawiaj z użytkownikiem po polsku.
 
 ## Kierunek produktu
 
-- Ripple ma własny runtime stron i osadzony harness deweloperski.
+- Ripple jest pluginem deweloperskim dla Astro, React/Vite i Next.js.
+  Używamy DOM-u i HMR gospodarza; nie przejmuj renderowania ani stanu frameworka.
+  Własny runtime JSON zachowujemy wyłącznie jako kompatybilny prototyp.
 - W trybie deweloperskim elementy mają być zaznaczane, przeciągane między inne
   elementy oraz opisywane rysunkami i tekstem.
 - Używamy bezpośrednio modeli z własnej subskrypcji ChatGPT przez OAuth.
@@ -12,11 +14,13 @@ Projekt rozwijamy w Rust i TypeScript. Rozmawiaj z użytkownikiem po polsku.
 - Żądany model to `gpt-6-luna`, reasoning effort `low`. Nie zmieniaj modelu po cichu.
 - OAuth i tokeny należą do lokalnego procesu Rust. Przeglądarka dostaje tylko
   podstawowe informacje o koncie i stan edytora.
-- Źródłem strony w prototypie jest `ripple.page.json`; elementy mają stałe ID.
+- Element wskazuje źródło przez `data-ripple-source` lub konfigurację pluginu.
+  `ripple.page.json` należy do starszego prototypu, nie jest wymagany przez plugin.
 - Ripple ma wspierać fullstack: kod TypeScript, backend Rust, API, migracje i testy.
-  `ripple.project.json` określa źródła projektu i komendy kontrolne. Wykonawca Luny
-  edytuje je w kopii roboczej, sprawdza i dopiero wtedy zapisuje. Nie ograniczaj
-  przyszłych funkcji do samego dokumentu strony.
+  `ripple.project.json` określa źródła projektu, lokalne originy i komendy kontrolne.
+  Domyślnie pracujemy małymi krokami: do 3 plików i 1–2 odpowiedzi Luny, poprawki
+  tekstu zamiast przepisywania całych plików. Zmiany w kopii roboczej zapisujemy po
+  kontrolach. UI pokazuje rzeczywiste etapy pracy przez strumień SSE.
 - Logowanie dewelopera przez ChatGPT służy dostępowi do modelu; logowanie i sesje
   użytkowników budowanej aplikacji wymagają osobnej implementacji.
 

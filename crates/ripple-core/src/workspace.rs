@@ -28,7 +28,12 @@ type Files = BTreeMap<String, String>;
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ProjectManifest {
     pub version: u8,
+    #[serde(default)]
     pub page: String,
+    #[serde(default)]
+    pub entrypoints: Vec<String>,
+    #[serde(default)]
+    pub dev_origins: Vec<String>,
     pub sources: Vec<String>,
     pub checks: Vec<Check>,
     #[serde(default)]
@@ -112,7 +117,32 @@ impl Project {
                 return Err(Error::Invalid("Invalid or duplicate project check."));
             }
         }
-        valid_path(&manifest.page)?;
+        if !manifest.page.is_empty() {
+            valid_path(&manifest.page)?;
+        }
+        if manifest.entrypoints.len() > 3 || manifest.dev_origins.len() > 16 {
+            return Err(Error::Invalid(
+                "Too many entrypoints or development origins.",
+            ));
+        }
+        for origin in &manifest.dev_origins {
+            let url = reqwest::Url::parse(origin)
+                .map_err(|_| Error::Invalid("Invalid development origin."))?;
+            if url.scheme() != "http"
+                || !matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
+                || url.origin().ascii_serialization() != *origin
+            {
+                return Err(Error::Invalid(
+                    "Development origins must be exact local HTTP origins.",
+                ));
+            }
+        }
+        for entry in &manifest.entrypoints {
+            valid_path(entry)?;
+            if !allowed(&manifest, entry) {
+                return Err(Error::Invalid("Entrypoint is outside sources."));
+            }
+        }
         for source in &manifest.sources {
             valid_path(source)?;
             if source == &manifest_path {
@@ -121,7 +151,7 @@ impl Project {
                 ));
             }
         }
-        if !allowed(&manifest, &manifest.page) {
+        if !manifest.page.is_empty() && !allowed(&manifest, &manifest.page) {
             return Err(Error::Invalid("The page must be inside project sources."));
         }
         let project = Self {
@@ -130,7 +160,9 @@ impl Project {
             manifest_text,
             manifest,
         };
-        project.page()?.validate()?;
+        if !project.manifest.page.is_empty() {
+            project.page()?.validate()?;
+        }
         Ok(project)
     }
 
@@ -157,6 +189,33 @@ impl Project {
                 "Page changed before the project run. Refresh the editor.",
             ));
         }
+        let mut workspace = self.stage(originals)?;
+        preview.validate()?;
+        if original_page.revision()? != preview.revision()? {
+            let path = workspace.project.manifest.page.clone();
+            workspace.write(
+                &path,
+                &format!("{}\n", serde_json::to_string_pretty(preview)?),
+            )?;
+        }
+        Ok(workspace)
+    }
+
+    pub fn revision(&self) -> Result<String> {
+        Ok(fingerprint(&snapshot(&self.root, &self.manifest)?))
+    }
+
+    pub fn begin_sources(self, expected_revision: &str) -> Result<Workspace> {
+        let originals = snapshot(&self.root, &self.manifest)?;
+        if fingerprint(&originals) != expected_revision {
+            return Err(Error::Invalid(
+                "Projekt zmienił się. Odśwież stronę przed kolejnym krokiem.",
+            ));
+        }
+        self.stage(originals)
+    }
+
+    fn stage(self, originals: Files) -> Result<Workspace> {
         let temp = tempfile::tempdir()?;
         let stage = fs::canonicalize(temp.path())?;
         for (path, content) in &originals {
@@ -168,23 +227,22 @@ impl Project {
         }
         write_text(&stage, &self.manifest_path, &self.manifest_text)?;
         link_dependencies(&self.root, &stage)?;
-        let mut workspace = Workspace {
+        Ok(Workspace {
             project: self,
             _temp: temp,
             stage,
             originals,
             checks: BTreeMap::new(),
-        };
-        preview.validate()?;
-        if original_page.revision()? != preview.revision()? {
-            let path = workspace.project.manifest.page.clone();
-            workspace.write(
-                &path,
-                &format!("{}\n", serde_json::to_string_pretty(preview)?),
-            )?;
-        }
-        Ok(workspace)
+        })
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct TextPatch {
+    pub path: String,
+    pub old_text: String,
+    pub new_text: String,
 }
 
 pub struct Workspace {
@@ -200,6 +258,103 @@ impl Workspace {
         Ok(
             json!({"manifest":self.project.manifest, "files":self.files()?.keys().collect::<Vec<_>>()}),
         )
+    }
+
+    /// Preload a small, explicit source context. Absolute source markers must stay under root.
+    pub fn quick_context(&self, requested: &[String]) -> Result<Files> {
+        let mut paths = BTreeSet::new();
+        for path in requested {
+            let relative = if Path::new(path).is_absolute() {
+                fs::canonicalize(path)?
+                    .strip_prefix(&self.project.root)
+                    .map_err(|_| Error::Invalid("Source marker is outside the project."))?
+                    .to_str()
+                    .ok_or(Error::Invalid("Invalid source marker."))?
+                    .to_owned()
+            } else {
+                path.clone()
+            };
+            if !relative.is_empty() {
+                self.source(&relative)?;
+                paths.insert(relative);
+            }
+        }
+        if paths.is_empty() {
+            paths.extend(self.project.manifest.entrypoints.iter().cloned());
+        }
+        if paths.is_empty() {
+            return Err(Error::Invalid(
+                "Dodaj data-ripple-source lub entrypoints w ripple.project.json.",
+            ));
+        }
+        if paths.len() > 3 {
+            return Err(Error::Invalid(
+                "Jeden krok może obejmować najwyżej 3 pliki.",
+            ));
+        }
+        let mut files = Files::new();
+        for path in paths {
+            files.insert(path.clone(), self.read(&path)?);
+        }
+        if files.values().map(String::len).sum::<usize>() > 64_000 {
+            return Err(Error::Invalid(
+                "Kontekst jest za duży. Zaznacz mniejszy komponent.",
+            ));
+        }
+        Ok(files)
+    }
+
+    /// Literal, unique matches only. Preflight all replacements before touching the stage.
+    pub fn apply_patches(
+        &mut self,
+        patches: &[TextPatch],
+        viewed: &BTreeSet<String>,
+    ) -> Result<()> {
+        if patches.len() > 12 {
+            return Err(Error::Invalid("Zbyt wiele poprawek w jednym kroku."));
+        }
+        let mut updates = Files::new();
+        for patch in patches {
+            self.source(&patch.path)?;
+            if !updates.contains_key(&patch.path) {
+                let existing = self.files()?.get(&patch.path).cloned();
+                if existing.is_some() && !viewed.contains(&patch.path) {
+                    return Err(Error::Invalid(
+                        "Model must read an existing file before editing it.",
+                    ));
+                }
+                updates.insert(patch.path.clone(), existing.unwrap_or_default());
+            }
+            let content = updates.get_mut(&patch.path).unwrap();
+            if patch.old_text.is_empty() {
+                if !content.is_empty() || self.originals.contains_key(&patch.path) {
+                    return Err(Error::Invalid(
+                        "Empty match is only allowed for a new file.",
+                    ));
+                }
+                *content = patch.new_text.clone();
+            } else {
+                if content.matches(&patch.old_text).count() != 1 {
+                    return Err(Error::Invalid(
+                        "Poprawka nie wskazuje jednego fragmentu. Wyślij mniejszy krok.",
+                    ));
+                }
+                *content = content.replacen(&patch.old_text, &patch.new_text, 1);
+            }
+        }
+        if updates.len() > 3 {
+            return Err(Error::Invalid("Jeden krok może zmienić najwyżej 3 pliki."));
+        }
+        let mut files = self.files()?;
+        files.extend(updates.clone());
+        check_limits(&files)?;
+        if updates.values().any(|content| content.len() > MAX_FILE) {
+            return Err(Error::Invalid("Source file is too large."));
+        }
+        for (path, content) in updates {
+            self.write(&path, &content)?;
+        }
+        Ok(())
     }
 
     fn files(&self) -> Result<Files> {
@@ -307,8 +462,17 @@ impl Workspace {
 
     /// Checks are cached only for the exact source content they tested.
     pub async fn verify(&mut self) -> Result<Vec<CheckResult>> {
-        let page: Page = serde_json::from_str(&self.read(&self.project.manifest.page)?)?;
-        page.validate()?;
+        self.verify_with_progress(&|_, _| {}).await
+    }
+
+    pub async fn verify_with_progress(
+        &mut self,
+        progress: &(dyn Fn(usize, &str) + Send + Sync),
+    ) -> Result<Vec<CheckResult>> {
+        if !self.project.manifest.page.is_empty() {
+            let page: Page = serde_json::from_str(&self.read(&self.project.manifest.page)?)?;
+            page.validate()?;
+        }
         let names: Vec<_> = self
             .project
             .manifest
@@ -317,7 +481,8 @@ impl Workspace {
             .map(|check| check.name.clone())
             .collect();
         let mut results = vec![];
-        for name in &names {
+        for (index, name) in names.iter().enumerate() {
+            progress(index, name);
             let current = fingerprint(&self.files()?);
             let result = match self.checks.get(name) {
                 Some((revision, result)) if revision == &current => result.clone(),
@@ -362,12 +527,14 @@ impl Workspace {
             ));
         }
         let files = self.files()?;
-        let page: Page = serde_json::from_str(
-            files
-                .get(&self.project.manifest.page)
-                .ok_or(Error::Invalid("Missing project page."))?,
-        )?;
-        page.validate()?;
+        if !self.project.manifest.page.is_empty() {
+            let page: Page = serde_json::from_str(
+                files
+                    .get(&self.project.manifest.page)
+                    .ok_or(Error::Invalid("Missing project page."))?,
+            )?;
+            page.validate()?;
+        }
         let paths: BTreeSet<_> = files.keys().chain(self.originals.keys()).cloned().collect();
         let changed: Vec<_> = paths
             .into_iter()
@@ -442,7 +609,7 @@ fn blocked(part: &str) -> bool {
     let part = part.to_ascii_lowercase();
     matches!(
         part.as_str(),
-        "node_modules" | "target" | "dist" | "coverage" | "accounts.json"
+        "node_modules" | "target" | "dist" | "coverage" | "accounts.json" | "next-env.d.ts"
     ) || [".pem", ".key", ".sqlite", ".sqlite3", ".db"]
         .iter()
         .any(|suffix| part.ends_with(suffix))
@@ -563,8 +730,8 @@ fn replace(root: &Path, path: &str, content: Option<&String>) -> Result<()> {
 #[cfg(unix)]
 fn link_dependencies(root: &Path, stage: &Path) -> Result<()> {
     use std::os::unix::fs::symlink;
-    fn link(root: &Path, stage: &Path, relative: &Path) -> Result<()> {
-        let directory = root.join(relative);
+    fn link(dependencies: &Path, root: &Path, stage: &Path, relative: &Path) -> Result<()> {
+        let directory = dependencies.join(relative);
         if !directory.is_dir() {
             return Ok(());
         }
@@ -573,9 +740,11 @@ fn link_dependencies(root: &Path, stage: &Path) -> Result<()> {
             let entry = entry?;
             let name = entry.file_name();
             let relative = relative.join(&name);
-            if name.to_string_lossy().starts_with('@') {
-                link(root, stage, &relative)?;
-            } else {
+            if name.to_string_lossy().starts_with('@') || name == ".bin" {
+                link(dependencies, root, stage, &relative)?;
+            } else if !matches!(name.to_str(), Some(".astro" | ".vite"))
+                && fs::symlink_metadata(stage.join(&relative)).is_err()
+            {
                 let target = fs::canonicalize(entry.path())?;
                 let target = target
                     .strip_prefix(root)
@@ -587,7 +756,15 @@ fn link_dependencies(root: &Path, stage: &Path) -> Result<()> {
         }
         Ok(())
     }
-    link(root, stage, Path::new("node_modules"))
+    // Node resolves each package from the nearest ancestor; a local cache-only
+    // node_modules must not hide actual packages installed at the monorepo root.
+    for dependencies in root
+        .ancestors()
+        .filter(|path| path.join("node_modules").is_dir())
+    {
+        link(dependencies, root, stage, Path::new("node_modules"))?;
+    }
+    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -919,5 +1096,105 @@ pub(crate) mod tests {
         let _ = task.await;
         tokio::time::sleep(Duration::from_millis(1_100)).await;
         assert!(!workspace.stage.join("server/survived").exists());
+    }
+    fn plugin_fixture() -> TempDir {
+        let (root, _) = fixture(&["true"]);
+        let path = root.path().join("ripple.project.json");
+        let mut manifest: Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        manifest.as_object_mut().unwrap().remove("page");
+        manifest["entrypoints"] = json!(["web/app.ts"]);
+        manifest["devOrigins"] = json!(["http://127.0.0.1:5173"]);
+        fs::write(path, manifest.to_string()).unwrap();
+        root
+    }
+
+    #[tokio::test]
+    async fn plugin_stages_unique_patches_checks_and_detects_external_source_changes() {
+        let root = plugin_fixture();
+        let path = root.path().join("ripple.project.json");
+        let project = Project::open(&path).unwrap();
+        let revision = project.revision().unwrap();
+        let mut work = project.begin_sources(&revision).unwrap();
+        let context = work.quick_context(&[]).unwrap();
+        assert_eq!(context["web/app.ts"], "original");
+        work.apply_patches(
+            &[TextPatch {
+                path: "web/app.ts".into(),
+                old_text: "original".into(),
+                new_text: "updated".into(),
+            }],
+            &context.keys().cloned().collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(root.path().join("web/app.ts")).unwrap(),
+            "original"
+        );
+        work.verify().await.unwrap();
+        fs::write(root.path().join("server/main.rs"), "external").unwrap();
+        assert!(work.commit().is_err());
+        assert_eq!(
+            fs::read_to_string(root.path().join("web/app.ts")).unwrap(),
+            "original"
+        );
+        assert!(
+            Project::open(&path)
+                .unwrap()
+                .begin_sources(&revision)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn plugin_rejects_ambiguous_unread_and_outside_patches_before_any_write() {
+        let root = plugin_fixture();
+        fs::write(root.path().join("web/app.ts"), "same same").unwrap();
+        let project = Project::open(&root.path().join("ripple.project.json")).unwrap();
+        let revision = project.revision().unwrap();
+        let mut work = project.begin_sources(&revision).unwrap();
+        let viewed = BTreeSet::from(["web/app.ts".into()]);
+        for (path, old) in [
+            ("web/app.ts", "same"),
+            ("server/main.rs", "original"),
+            ("../escape.ts", "original"),
+        ] {
+            assert!(
+                work.apply_patches(
+                    &[TextPatch {
+                        path: path.into(),
+                        old_text: old.into(),
+                        new_text: "bad".into()
+                    }],
+                    &viewed
+                )
+                .is_err()
+            );
+        }
+        assert_eq!(work.read("web/app.ts").unwrap(), "same same");
+        assert!(work.quick_context(&["/tmp/outside.ts".into()]).is_err());
+        assert_eq!(
+            work.quick_context(&[root
+                .path()
+                .join("web/app.ts")
+                .to_string_lossy()
+                .into_owned()])
+                .unwrap()["web/app.ts"],
+            "same same"
+        );
+    }
+    #[test]
+    fn nested_projects_reuse_the_nearest_installed_dependencies() {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("examples/app");
+        let stage = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.join("node_modules/.astro")).unwrap();
+        fs::create_dir_all(parent.path().join("node_modules/vite")).unwrap();
+        fs::write(parent.path().join("node_modules/vite/package.json"), "{}").unwrap();
+        link_dependencies(&fs::canonicalize(root).unwrap(), stage.path()).unwrap();
+        assert_eq!(
+            fs::read_to_string(stage.path().join("node_modules/vite/package.json")).unwrap(),
+            "{}"
+        );
     }
 }

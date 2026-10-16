@@ -1,7 +1,8 @@
-import { findNode, moveNode, validatePage } from "./document.js";
+import { findNode, moveNode, parentOf, validatePage } from "./document.js";
 import type { ElementReference, RippleNode, RipplePage } from "./document.js";
 
 export class RippleRuntime {
+  readonly kind = "document" as const;
   readonly mount: HTMLElement;
   readonly sourceFile: string;
   #page: RipplePage;
@@ -23,6 +24,23 @@ export class RippleRuntime {
   }
   element(id: string): HTMLElement | undefined {
     return this.#elements.get(id);
+  }
+
+  id(element: HTMLElement): string {
+    return element.dataset["rippleId"]!;
+  }
+  target(target: EventTarget | null): HTMLElement | undefined {
+    const element =
+      target instanceof Element
+        ? target.closest<HTMLElement>("[data-ripple-id]")
+        : null;
+    return element && this.mount.contains(element) ? element : undefined;
+  }
+  parent(id: string): string | undefined {
+    return parentOf(this.#page.root, id)?.id;
+  }
+  elements(): HTMLElement[] {
+    return [...this.#elements.values()];
   }
 
   replace(page: RipplePage): void {

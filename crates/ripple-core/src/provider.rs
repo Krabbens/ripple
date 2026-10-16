@@ -39,6 +39,7 @@ pub struct Model {
     pub visibility: String,
 }
 
+#[derive(Clone)]
 pub struct ModelClient {
     client: Client,
     base_url: String,
@@ -197,7 +198,11 @@ impl ModelClient {
         ))
     }
 
-    async fn respond(&self, credentials: &Credentials, body: &Value) -> Result<Vec<Value>> {
+    pub(crate) async fn respond(
+        &self,
+        credentials: &Credentials,
+        body: &Value,
+    ) -> Result<Vec<Value>> {
         let mut response = self
             .client
             .post(format!("{}/responses", self.base_url))
@@ -292,7 +297,7 @@ fn model_failure(event: &str, value: &Value) -> Error {
     Error::Model(format!("{event}, code={code}{parameter}"))
 }
 
-fn output_text(output: &[Value]) -> String {
+pub(crate) fn output_text(output: &[Value]) -> String {
     output
         .iter()
         .filter(|item| item["type"] == "message")
@@ -650,5 +655,125 @@ mod tests {
         assert_eq!(request["stream"], true);
         assert!(request.get("previous_response_id").is_none());
         assert!(request.get("temperature").is_none());
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn quick_edits_preload_sources_use_at_most_two_responses_and_never_repair_failed_checks()
+    {
+        use crate::{
+            oauth::Account,
+            quick::PluginIntent,
+            workspace::{Project, tests::fixture},
+        };
+        use tiny_http::{Header, Response, Server};
+        for scenario in 0..4 {
+            let (root, _) = fixture(if scenario == 3 { &["false"] } else { &["true"] });
+            let path = root.path().join("ripple.project.json");
+            let mut manifest: Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            manifest.as_object_mut().unwrap().remove("page");
+            manifest["entrypoints"] = json!(["web/app.ts"]);
+            std::fs::write(&path, manifest.to_string()).unwrap();
+            let project = Project::open(&path).unwrap();
+            let revision = project.revision().unwrap();
+            let mut workspace = project.begin_sources(&revision).unwrap();
+            let server = Server::http("127.0.0.1:0").unwrap();
+            let base_url = format!("http://{}", server.server_addr());
+            let task = std::thread::spawn(move || {
+                let rounds = if scenario == 1 || scenario == 2 { 2 } else { 1 };
+                for round in 0..rounds {
+                    let mut request = server
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap()
+                        .unwrap();
+                    let mut text = String::new();
+                    request.as_reader().read_to_string(&mut text).unwrap();
+                    let body: Value = serde_json::from_str(&text).unwrap();
+                    assert_eq!(body["model"], MODEL);
+                    assert_eq!(body["reasoning"]["effort"], EFFORT);
+                    assert_eq!(body["text"]["format"]["strict"], true);
+                    assert!(body.get("tools").is_none());
+                    assert!(text.contains("web/app.ts") && text.contains("original"));
+                    if round == 1 {
+                        assert!(
+                            text.contains("encrypted-test") && text.contains("additionalSources")
+                        );
+                    }
+                    let plan = if scenario == 2 || (scenario == 1 && round == 0) {
+                        json!({"summary":"Potrzebuję źródła", "filesToRead":["server/main.rs"], "patches":[]})
+                    } else {
+                        json!({"summary":"Zmieniono fragment", "filesToRead":[], "patches":[{"path":"web/app.ts","oldText":"original","newText":"updated"}]})
+                    };
+                    let events = [
+                        json!({"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","encrypted_content":"encrypted-test"}}),
+                        json!({"type":"response.output_item.done","output_index":1,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":plan.to_string()}]}}),
+                        json!({"type":"response.completed","response":{"status":"completed","output":[]}}),
+                    ];
+                    let stream = events
+                        .iter()
+                        .map(|event| format!("data: {event}\n\n"))
+                        .collect::<String>();
+                    request
+                        .respond(Response::from_string(stream).with_header(
+                            Header::from_bytes("Content-Type", "text/event-stream").unwrap(),
+                        ))
+                        .unwrap();
+                }
+                assert!(
+                    server
+                        .recv_timeout(Duration::from_millis(150))
+                        .unwrap()
+                        .is_none()
+                );
+            });
+            let credentials = Credentials {
+                account: Account {
+                    issuer: "test".into(),
+                    subject: "test".into(),
+                    client_id: "test".into(),
+                    host_id: "test".into(),
+                    email: None,
+                },
+                access_token: "test".into(),
+                refresh_token: "test".into(),
+                id_token: "test".into(),
+                scopes: vec!["chatgpt.tokens.use.direct".into()],
+                expires_at: u64::MAX,
+            };
+            let client = ModelClient {
+                client: Client::new(),
+                base_url,
+            };
+            let intent = PluginIntent {
+                version: 2,
+                base_revision: revision,
+                instruction: "Zmień fragment".into(),
+                page: json!({}),
+                actions: vec![],
+                annotation: None,
+            };
+            let phases = std::sync::Mutex::new(vec![]);
+            let result = client
+                .edit_quick(&credentials, &intent, &mut workspace, &|event| {
+                    phases.lock().unwrap().push(event.phase)
+                })
+                .await;
+            if scenario < 2 {
+                assert!(result.is_ok());
+                assert!(phases.lock().unwrap().contains(&"checking"));
+                workspace.commit().unwrap();
+                assert_eq!(
+                    std::fs::read_to_string(root.path().join("web/app.ts")).unwrap(),
+                    "updated"
+                );
+            } else {
+                assert!(result.is_err());
+                assert_eq!(
+                    std::fs::read_to_string(root.path().join("web/app.ts")).unwrap(),
+                    "original"
+                );
+            }
+            task.join().unwrap();
+        }
     }
 }
