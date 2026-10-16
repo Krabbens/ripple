@@ -1,0 +1,15 @@
+# Rust
+/target/
+
+# TypeScript / Node.js
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Local configuration
+.env
+.env.*
+!.env.example
+.DS_Store
