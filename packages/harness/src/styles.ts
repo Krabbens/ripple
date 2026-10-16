@@ -40,7 +40,7 @@ textarea::placeholder { color: var(--muted); }
 .account a { display: block; padding: 9px 12px; text-align: center; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 12px; overflow-wrap: anywhere; }
 .account a:hover { background: var(--canvas); }
 .source { margin: 12px 0 0; color: var(--muted); font: 11px/1.5 'SF Mono', monospace; overflow-wrap: anywhere; }
-.status { font-size: 12px; margin-top: 12px; padding: 10px; background: #edf3ec; color: #346538; border-radius: 6px; overflow-wrap: anywhere; }
+.status { font-size: 12px; margin-top: 12px; padding: 10px; background: #edf3ec; color: #346538; border-radius: 6px; overflow-wrap: anywhere; white-space: pre-line; max-height: 180px; overflow-y: auto; flex-shrink: 0; }
 .status:empty { display: none; }
 .status[data-error=true] { background: #fdebec; color: #9f2f2d; }
 .outline { position: fixed; pointer-events: none; border: 2px solid var(--blue); border-radius: 2px; display: none; }

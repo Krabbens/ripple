@@ -23,7 +23,15 @@ struct StoreData {
 pub struct AccountStore {
     root: PathBuf,
     data: StoreData,
-    _lock: File,
+    lock: File,
+}
+
+impl Drop for AccountStore {
+    fn drop(&mut self) {
+        // Forked check processes may briefly inherit this open-file description.
+        // Unlock explicitly rather than waiting for the last duplicate to close.
+        let _ = self.lock.unlock();
+    }
 }
 
 impl AccountStore {
@@ -93,11 +101,7 @@ impl AccountStore {
             atomic_json(&path, &data)?;
             data
         };
-        Ok(Self {
-            root,
-            data,
-            _lock: lock,
-        })
+        Ok(Self { root, data, lock })
     }
 
     pub fn host_id(&self) -> &str {
@@ -266,5 +270,20 @@ mod tests {
         let store = AccountStore::open(dir.path()).unwrap();
         assert_eq!(store.host_id(), host);
         assert_eq!(store.active().unwrap().account().subject, "test-user");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_the_store_releases_a_lock_even_with_an_inherited_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path()).unwrap();
+        let inherited = store.lock.try_clone().unwrap();
+        drop(store);
+        let _next = AccountStore::open(dir.path()).unwrap();
+        drop(inherited);
+        assert!(matches!(
+            AccountStore::open(dir.path()),
+            Err(Error::StoreLocked)
+        ));
     }
 }

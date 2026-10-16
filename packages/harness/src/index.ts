@@ -16,6 +16,7 @@ interface ServerState {
   account: { email: string | null; subject: string } | null;
   model: string;
   effort: string;
+  project: { sources: string[]; checks: string[] } | null;
 }
 type Mode = "browse" | "select" | "draw";
 interface Snapshot {
@@ -59,6 +60,7 @@ export function mountHarness(
       <div class="model"><span>GPT-6 Luna</span><span>Myślenie: low</span></div>
       <div class="account"><a href="/auth/login" target="_blank" rel="noopener" data-account>Continue with ChatGPT</a></div>
       <p class="source" data-source></p>
+      <p class="source" data-project hidden></p>
       <div class="status" role="status" aria-live="polite"></div>
     </section>`;
   document.body.append(host);
@@ -90,6 +92,7 @@ export function mountHarness(
   let baseline = runtime.page;
   let revision = initialRevision;
   let busy = false;
+  let projectMode = false;
   let drag: {
     id: string;
     start: Point;
@@ -496,6 +499,15 @@ export function mountHarness(
       const response = await fetch("/api/state");
       if (!response.ok) return;
       const state = (await response.json()) as ServerState;
+      projectMode = Boolean(state.project);
+      const project = required<HTMLElement>("[data-project]");
+      project.hidden = !projectMode;
+      project.textContent = state.project
+        ? `Cały projekt · ${state.project.checks.join(" · ")}`
+        : "";
+      input.placeholder = projectMode
+        ? "Np. podłącz formularz do API i dodaj zapis w bazie."
+        : "Np. więcej miejsca wokół nagłówka i krótszy tekst przycisku.";
       const link = required<HTMLAnchorElement>("[data-account]");
       link.textContent = state.account
         ? (state.account.email ?? "ChatGPT połączony")
@@ -528,7 +540,11 @@ export function mountHarness(
     busy = true;
     send.disabled = true;
     send.textContent = "Luna pracuje…";
-    status("Przekazuję stronę i gesty do GPT-6 Luna.");
+    status(
+      projectMode
+        ? "Luna pracuje na projekcie. Przed zapisem uruchomi jego kontrole."
+        : "Przekazuję stronę i gesty do GPT-6 Luna.",
+    );
     refresh();
     try {
       const intent: VisualIntent = {
@@ -560,6 +576,10 @@ export function mountHarness(
         document?: RipplePage;
         revision?: string;
         error?: string;
+        summary?: string;
+        changes?: { path: string; kind: string }[];
+        checks?: { name: string; success: boolean }[];
+        rebuildRequired?: boolean;
       };
       if (!response.ok || !result.document || !result.revision)
         throw new Error(result.error ?? "Nie udało się zapisać zmiany.");
@@ -571,7 +591,11 @@ export function mountHarness(
       selected = null;
       input.value = "";
       runtime.replace(result.document);
-      status(`Zmiany zapisane w ${runtime.sourceFile}.`);
+      status(
+        result.changes
+          ? `${result.summary ?? "Zmiany zapisane."}\n${result.changes.length ? `Pliki: ${result.changes.map((change) => change.path).join(", ")}.` : "Bez zmian w plikach."} Kontrole: ${result.checks?.map((check) => check.name).join(", ") ?? ""}.${result.rebuildRequired ? "\nPrzebuduj kod i uruchom ponownie aplikację, aby go wczytać." : ""}`
+          : `Zmiany zapisane w ${runtime.sourceFile}.`,
+      );
     } catch (error) {
       status(
         error instanceof Error ? error.message : "Żądanie nie powiodło się.",

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "page": "ripple.page.json",
+  "sources": [
+    "ripple.page.json",
+    "crates",
+    "packages",
+    "examples",
+    "migrations",
+    "Cargo.toml",
+    "Cargo.lock",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.base.json",
+    "rust-toolchain.toml"
+  ],
+  "checks": [
+    {
+      "name": "Rust",
+      "command": ["cargo", "test", "--workspace", "--locked"],
+      "timeoutSeconds": 120
+    },
+    {
+      "name": "TypeScript",
+      "command": ["npm", "run", "typecheck"],
+      "timeoutSeconds": 120
+    },
+    {
+      "name": "Runtime",
+      "command": ["npm", "test"],
+      "timeoutSeconds": 120
+    }
+  ],
+  "instructions": "To repozytorium samego frameworka Ripple. Backend i lokalny wykonawca są w crates/, runtime i osadzony panel w packages/. Używamy własnego runtime, bez Codex CLI/SDK/app-server. Model to gpt-6-luna z reasoning low, przez OAuth subskrypcji ChatGPT. Tokeny pozostają w procesie Rust. UI ma ciepłą monochromatyczną paletę, lekkie obramowania, proste SVG i obsługę reduced motion. W tym prototypie nie ma jeszcze adaptera bazy danych ani automatycznego restartu procesów. Nie deklaruj ich działania bez implementacji."
+}

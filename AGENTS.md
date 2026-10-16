@@ -13,6 +13,12 @@ Projekt rozwijamy w Rust i TypeScript. Rozmawiaj z użytkownikiem po polsku.
 - OAuth i tokeny należą do lokalnego procesu Rust. Przeglądarka dostaje tylko
   podstawowe informacje o koncie i stan edytora.
 - Źródłem strony w prototypie jest `ripple.page.json`; elementy mają stałe ID.
+- Ripple ma wspierać fullstack: kod TypeScript, backend Rust, API, migracje i testy.
+  `ripple.project.json` określa źródła projektu i komendy kontrolne. Wykonawca Luny
+  edytuje je w kopii roboczej, sprawdza i dopiero wtedy zapisuje. Nie ograniczaj
+  przyszłych funkcji do samego dokumentu strony.
+- Logowanie dewelopera przez ChatGPT służy dostępowi do modelu; logowanie i sesje
+  użytkowników budowanej aplikacji wymagają osobnej implementacji.
 
 ## Układ i narzędzia
 

@@ -11,6 +11,7 @@ use ripple_core::{
     oauth::{AuthAttempt, OAuthClient},
     provider::{EFFORT, MODEL, ModelClient, VisualIntent},
     store::{AccountStore, atomic_json},
+    workspace::Project,
 };
 use serde_json::{Value, json};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -20,6 +21,7 @@ const INDEX: &str = include_str!("../../../examples/playground/index.html");
 
 struct App {
     page_path: PathBuf,
+    project_path: Option<PathBuf>,
     origin: String,
     host: String,
     accounts: AccountStore,
@@ -44,19 +46,57 @@ fn read_page(path: &Path) -> Result<Page> {
 fn main() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut port: u16 = 4310;
     let mut page_path = PathBuf::from("ripple.page.json");
+    let mut project_path = None;
+    let mut explicit_page = false;
+    let mut check_only = false;
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--port" => port = args.next().ok_or("Missing port")?.parse()?,
-            "--page" => page_path = PathBuf::from(args.next().ok_or("Missing page path")?),
+            "--page" => {
+                explicit_page = true;
+                page_path = PathBuf::from(args.next().ok_or("Missing page path")?);
+            }
+            "--project" => {
+                project_path = Some(PathBuf::from(
+                    args.next().ok_or("Missing project manifest")?,
+                ))
+            }
+            "--check" => check_only = true,
             "--help" => {
-                println!("ripple-dev [--port 4310] [--page ripple.page.json]");
+                println!(
+                    "ripple-dev [--port 4310] [--page ripple.page.json | --project ripple.project.json]"
+                );
+                println!(
+                    "ripple-dev --project ripple.project.json --check  (validate a disposable copy, no OAuth)"
+                );
                 return Ok(());
             }
             _ => return Err(format!("Unknown argument: {arg}").into()),
         }
     }
+    if project_path.is_none() && !explicit_page && Path::new("ripple.project.json").try_exists()? {
+        project_path = Some(PathBuf::from("ripple.project.json"));
+    }
+    if let Some(path) = &project_path {
+        if explicit_page {
+            return Err("Use --project or --page, not both".into());
+        }
+        page_path = Project::open(path)?.page_path();
+    }
     read_page(&page_path)?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    if check_only {
+        let project = Project::open(project_path.as_ref().ok_or("--check requires --project")?)?;
+        let page = project.page()?;
+        let mut workspace = project.begin(&page, &page.revision()?)?;
+        for check in runtime.block_on(workspace.verify())? {
+            println!("{}: passed", check.name);
+        }
+        return Ok(());
+    }
     let home = if let Some(path) = env::var_os("RIPPLE_HOME") {
         PathBuf::from(path)
     } else if let Some(path) = env::var_os("XDG_CONFIG_HOME") {
@@ -78,6 +118,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let origin = format!("http://{address}");
     let mut app = App {
         page_path,
+        project_path,
         host: address.to_string(),
         origin: origin.clone(),
         accounts,
@@ -85,9 +126,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         pending: None,
         models: ModelClient::new()?,
     };
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
     println!("Ripple → {origin}\nGPT-6 Luna · low\nCtrl+C to stop.");
     for mut request in server.incoming_requests() {
         let result = runtime.block_on(app.handle(&mut request));
@@ -144,8 +182,14 @@ impl App {
             )),
             (&Method::Get, "/api/state") => {
                 let page = read_page(&self.page_path)?;
+                let project = self
+                    .project_path
+                    .as_ref()
+                    .map(|path| Project::open(path))
+                    .transpose()?;
                 json_reply(json!({"revision":page.revision()?, "document":page,
-                    "sourceFile":self.page_path.file_name().and_then(|p| p.to_str()).unwrap_or("ripple.page.json"),
+                    "sourceFile":project.as_ref().map(|p| p.manifest.page.as_str()).unwrap_or_else(|| self.page_path.file_name().and_then(|p| p.to_str()).unwrap_or("ripple.page.json")),
+                    "project":project.as_ref().map(|p| json!({"sources":p.manifest.sources,"checks":p.manifest.checks.iter().map(|c| &c.name).collect::<Vec<_>>()})),
                     "account":self.accounts.active().map(|c| c.account()), "model":MODEL, "effort":EFFORT}))
             }
             (&Method::Get, "/auth/login") => {
@@ -229,6 +273,25 @@ impl App {
                     return Err(Error::Invalid(
                         "GPT-6 Luna is not available to this ChatGPT account.",
                     ));
+                }
+                if let Some(path) = &self.project_path {
+                    let project = Project::open(path)?;
+                    if project.page_path() != self.page_path {
+                        return Err(Error::Invalid(
+                            "Page path changed in the manifest. Restart Ripple.",
+                        ));
+                    }
+                    let page_source = project.manifest.page.clone();
+                    let mut workspace = project.begin(&intent.preview, &intent.base_revision)?;
+                    let edit = self
+                        .models
+                        .edit_project(credentials, &current, &intent, &mut workspace)
+                        .await?;
+                    let changes = workspace.commit()?;
+                    let rebuild_required = changes.iter().any(|change| change.path != page_source);
+                    let next = read_page(&self.page_path)?;
+                    return json_reply(json!({"revision":next.revision()?,"document":next,
+                        "summary":edit.summary,"changes":changes,"checks":edit.checks,"rebuildRequired":rebuild_required}));
                 }
                 let next = self.models.edit(credentials, &current, &intent).await?;
                 ensure_revision(&read_page(&self.page_path)?, &intent.base_revision)?;
