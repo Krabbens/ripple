@@ -30,6 +30,30 @@ Przeciągnięcie zapisuje zamiar zmiany w źródle. Plugin nie przestawia DOM-u 
 ani nie przejmuje stanu komponentów. Po zapisie widok odświeża mechanizm HMR
 aplikacji. **Cofnij gest** i **Wyczyść** dotyczą niewysłanych gestów.
 
+## Szybkie operacje na elementach
+
+Po zaznaczeniu elementu panel udostępnia **Usuń**, **Duplikuj**, przesunięcie
+wcześniej lub później oraz **Zmień tekst**. Edycja tekstu działa dla elementu bez
+zagnieżdżonych znaczników; dla złożonego fragmentu zaznacz jego tekstowe dziecko.
+
+Usunięcie oznacza fragment na czerwono. Lista **Zaplanowane zmiany** pokazuje
+operacje, które zostaną zapisane po wybraniu **Zastosuj zmiany**. Dodatkowa
+instrukcja nie jest potrzebna. Możesz nadal dodać opis lub szkic.
+
+| Skrót w trybie zaznaczania | Operacja                    |
+| -------------------------- | --------------------------- |
+| `Delete` / `Backspace`     | Usuń element                |
+| `⌘/Ctrl+D`                 | Duplikuj                    |
+| `Alt+↑` / `Alt+↓`          | Przesuń wcześniej / później |
+| `⌘/Ctrl+Z`                 | Cofnij ostatni gest         |
+
+Skróty nie przechwytują pisania w polach tekstowych. **Cofnij gest** przywraca
+poprzedni plan, a **Wyczyść** odrzuca cały niezapisany zestaw. Kontenery dokumentu
+(`body`, `html` i punkt montowania pluginu) są chronione przed usunięciem.
+
+Plugin oznacza plan w swojej warstwie, zachowując DOM i stan aplikacji do czasu
+zapisu źródeł. Runtime prototypu JSON ma osobny lokalny podgląd tych operacji.
+
 ## Przykłady frameworków
 
 Zbuduj paczki przez `npm run build`. Uruchom jeden serwer Ripple i odpowiedni

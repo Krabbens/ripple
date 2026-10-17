@@ -41,6 +41,14 @@ export type VisualAction =
       parent: ElementReference;
       before: ElementReference | null;
     }
+  | { type: "remove"; element: ElementReference }
+  | {
+      type: "duplicate";
+      element: ElementReference;
+      parent: ElementReference;
+      before: ElementReference | null;
+    }
+  | { type: "setText"; element: ElementReference; text: string }
   | { type: "draw"; stroke: Stroke };
 
 export interface VisualIntent {
@@ -211,6 +219,58 @@ export function moveNode(
       ? to.children.length
       : to.children.findIndex((child) => child.id === beforeId);
   to.children.splice(index, 0, node);
+  validatePage(next);
+  return next;
+}
+
+/** Remove a subtree without allowing the document root to disappear. */
+export function removeNode(page: RipplePage, id: string): RipplePage {
+  validatePage(page);
+  const next = structuredClone(page);
+  const parent = parentOf(next.root, id);
+  if (!parent?.children) throw new Error("Nie można usunąć korzenia strony.");
+  parent.children = parent.children.filter((child) => child.id !== id);
+  validatePage(next);
+  return next;
+}
+
+/** Clone a subtree with fresh IDs; keep the original and its descendants unchanged. */
+export function duplicateNode(page: RipplePage, id: string): RipplePage {
+  validatePage(page);
+  const next = structuredClone(page);
+  const parent = parentOf(next.root, id);
+  const node = findNode(next.root, id);
+  if (!parent?.children || !node)
+    throw new Error("Nie można powielić korzenia strony.");
+  const copy = structuredClone(node);
+  let sequence = 0;
+  const assign = (node: RippleNode): void => {
+    do {
+      node.id = `ripple-copy-${++sequence}`;
+    } while (findNode(next.root, node.id));
+    for (const child of node.children ?? []) assign(child);
+  };
+  assign(copy);
+  parent.children.splice(parent.children.indexOf(node) + 1, 0, copy);
+  validatePage(next);
+  return next;
+}
+
+export function setNodeText(
+  page: RipplePage,
+  id: string,
+  text: string,
+): RipplePage {
+  validatePage(page);
+  const next = structuredClone(page);
+  const node = findNode(next.root, id);
+  if (
+    !node ||
+    node.children?.length ||
+    ["img", "input", "hr", "br"].includes(node.tag)
+  )
+    throw new Error("Wybierz element z samym tekstem.");
+  node.text = text;
   validatePage(next);
   return next;
 }

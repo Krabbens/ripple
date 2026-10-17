@@ -7,6 +7,12 @@ const paths = {
   collapse: '<path d="m7 7 10 10M17 7 7 17"/>',
   expand: '<path d="M12 5v14M5 12h14"/>',
   send: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
+  earlier: '<path d="M12 19V5m-6 6 6-6 6 6"/>',
+  later: '<path d="M12 5v14m-6-6 6 6 6-6"/>',
+  duplicate:
+    '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
+  remove: '<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
+  edit: '<path d="m4 16 12-12 4 4L8 20H4v-4Zm10-10 4 4"/>',
   logo: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
 };
 

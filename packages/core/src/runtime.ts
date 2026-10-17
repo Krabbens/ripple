@@ -1,4 +1,12 @@
-import { findNode, moveNode, parentOf, validatePage } from "./document.js";
+import {
+  findNode,
+  moveNode,
+  parentOf,
+  removeNode,
+  duplicateNode,
+  setNodeText,
+  validatePage,
+} from "./document.js";
 import type { ElementReference, RippleNode, RipplePage } from "./document.js";
 
 export class RippleRuntime {
@@ -67,6 +75,16 @@ export class RippleRuntime {
 
   move(id: string, parentId: string, beforeId: string | null): void {
     this.replace(moveNode(this.#page, id, parentId, beforeId));
+  }
+
+  remove(id: string): void {
+    this.replace(removeNode(this.#page, id));
+  }
+  duplicate(id: string): void {
+    this.replace(duplicateNode(this.#page, id));
+  }
+  setText(id: string, text: string): void {
+    this.replace(setNodeText(this.#page, id, text));
   }
 
   reference(id: string): ElementReference {

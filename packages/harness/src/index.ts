@@ -8,6 +8,7 @@ import type {
 } from "@ripple/core";
 import { styles } from "./styles.js";
 import { icon } from "./icons.js";
+import { siblingOrder, actionLabel } from "./operations.js";
 import { readChangeStream } from "./progress.js";
 import type { ChangeResult, ProgressEvent } from "./progress.js";
 
@@ -48,7 +49,7 @@ export function mountHarness(
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = `<style>${styles}</style>
-    <div class="outline"></div><div class="drop"></div><svg class="draw-layer" aria-hidden="true"></svg>
+    <div class="planned-layer" aria-hidden="true"></div><div class="outline"></div><div class="drop"></div><svg class="draw-layer" aria-hidden="true"></svg>
     <section class="panel" data-ui aria-label="Ripple — tryb deweloperski">
       <div class="top"><div class="brand">${icon("logo")} ripple</div><span class="badge">Edytor</span><button data-collapse aria-label="Zwiń panel" aria-expanded="true">${icon("collapse")}</button></div>
       <p class="intro">Zmieniaj stronę w jej własnym widoku.</p>
@@ -59,7 +60,24 @@ export function mountHarness(
       </div>
       <div class="label">Wybrany element <kbd>Esc</kbd></div>
       <div class="selection"><span data-selection>Wybierz element strony</span><button data-parent title="Zaznacz rodzica" aria-label="Zaznacz rodzica" disabled>${icon("parent")}</button></div>
+      <div class="element-actions" role="group" aria-label="Operacje na elemencie">
+        <button data-element-action="earlier" aria-label="Przesuń wcześniej" title="Przesuń wcześniej · Alt+↑" disabled>${icon("earlier")}</button>
+        <button data-element-action="later" aria-label="Przesuń później" title="Przesuń później · Alt+↓" disabled>${icon("later")}</button>
+        <button data-element-action="duplicate" title="Duplikuj · ⌘/Ctrl+D" disabled>${icon("duplicate")}Duplikuj</button>
+        <button data-element-action="remove" class="remove-button" title="Usuń · Delete/Backspace" disabled>${icon("remove")}Usuń</button>
+      </div>
+      <button class="edit-text" data-edit-text disabled>${icon("edit")}Zmień tekst</button>
+      <div class="text-editor" hidden>
+        <label class="label" for="ripple-element-text">Nowy tekst elementu</label>
+        <textarea id="ripple-element-text" maxlength="20000"></textarea>
+        <div class="row"><button data-save-text>Dodaj zmianę</button><button data-cancel-text>Anuluj</button></div>
+      </div>
       <p class="hint" data-hint>Kliknij element. Przytrzymaj, żeby przenieść.</p>
+      <section class="draft" aria-label="Zaplanowane zmiany" hidden>
+        <div class="label">Zaplanowane zmiany <span data-plan-count></span></div>
+        <ol data-plan></ol>
+        <p class="hint">Zapis po wybraniu „Zastosuj zmiany”.</p>
+      </section>
       <div class="compose"><label class="label" for="ripple-instruction">Opisz zmianę</label>
         <textarea id="ripple-instruction" aria-label="Opisz zmianę" placeholder="Np. więcej miejsca wokół nagłówka i krótszy tekst przycisku."></textarea>
         <div class="row meta"><span data-count>0 gestów</span><div><button data-undo disabled>Cofnij gest</button> <button data-reset>Wyczyść</button></div></div>
@@ -85,7 +103,8 @@ export function mountHarness(
   const outline = required<HTMLDivElement>(".outline");
   const marker = required<HTMLDivElement>(".drop");
   const svg = required<SVGSVGElement>("svg");
-  const input = required<HTMLTextAreaElement>("textarea");
+  const input = required<HTMLTextAreaElement>("#ripple-instruction");
+  const textInput = required<HTMLTextAreaElement>("#ripple-element-text");
   const send = required<HTMLButtonElement>("[data-send]");
   const abort = new AbortController();
   const options = { signal: abort.signal, capture: true };
@@ -115,6 +134,9 @@ export function mountHarness(
         ? "360px"
         : originalMargin;
   }
+  let planVersion = 0;
+  let renderedPlanVersion = -1;
+  let editing: string | null = null;
   let mode: Mode = "select";
   let selected: string | null = null;
   let actions: VisualAction[] = [];
@@ -150,9 +172,120 @@ export function mountHarness(
     if (actions.length >= 100)
       throw new Error("Wyślij bieżące gesty przed dodaniem kolejnych.");
     actions.push(action);
+    planVersion++;
+  }
+  function parentInPlan(id: string): string | undefined {
+    const moved =
+      runtime.kind === "dom"
+        ? [...actions]
+            .reverse()
+            .find(
+              (action) => action.type === "move" && action.element.id === id,
+            )
+        : undefined;
+    return moved?.type === "move" ? moved.parent.id : runtime.parent(id);
+  }
+  function pendingRemoval(id: string): boolean {
+    const visited = new Set<string>();
+    let current: string | undefined = id;
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      if (
+        actions.some(
+          (action) => action.type === "remove" && action.element.id === current,
+        )
+      )
+        return true;
+      current = parentInPlan(current);
+    }
+    return false;
+  }
+  function canManipulate(id: string | null): boolean {
+    const element = id ? runtime.element(id) : undefined;
+    return Boolean(
+      id &&
+      element &&
+      element !== runtime.mount &&
+      !["BODY", "HTML"].includes(element.tagName) &&
+      runtime.parent(id) &&
+      !pendingRemoval(id),
+    );
+  }
+  function canEditText(id: string | null): boolean {
+    const element = id ? runtime.element(id) : undefined;
+    return (
+      canManipulate(id) &&
+      Boolean(
+        element &&
+        element.children.length === 0 &&
+        !["IMG", "INPUT", "HR", "BR", "TEXTAREA", "SELECT"].includes(
+          element.tagName,
+        ) &&
+        (element.textContent?.length ?? 0) <= 20_000,
+      )
+    );
+  }
+  function placement(
+    id: string,
+  ): { parentId: string; siblings: string[] } | undefined {
+    const parentId = parentInPlan(id);
+    const parent = parentId ? runtime.element(parentId) : undefined;
+    if (!parent || !parentId) return undefined;
+    const initial = Array.from(parent.children)
+      .filter(
+        (element): element is HTMLElement =>
+          element instanceof HTMLElement && runtime.target(element) === element,
+      )
+      .map((element) => runtime.id(element));
+    return {
+      parentId,
+      siblings:
+        runtime.kind === "dom"
+          ? siblingOrder(initial, parentId, actions)
+          : initial,
+    };
+  }
+  function pendingPlan(): void {
+    const list = required<HTMLOListElement>("[data-plan]");
+    if (planVersion !== renderedPlanVersion) {
+      list.replaceChildren();
+      for (const action of actions) {
+        const label = actionLabel(action);
+        if (!label) continue;
+        const item = document.createElement("li");
+        item.textContent = label;
+        item.dataset["operation"] = action.type;
+        list.append(item);
+      }
+      required<HTMLElement>(".draft").hidden = list.children.length === 0;
+      required("[data-plan-count]").textContent = String(list.children.length);
+      renderedPlanVersion = planVersion;
+    }
+    const layer = required<HTMLElement>(".planned-layer");
+    layer.replaceChildren();
+    if (runtime.kind !== "dom" || mode === "browse") return;
+    for (const action of actions) {
+      if (action.type !== "remove") continue;
+      const element = runtime.element(action.element.id);
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      const mark = document.createElement("div");
+      mark.className = "removal-mark";
+      Object.assign(mark.style, {
+        left: `${rect.x}px`,
+        top: `${rect.y}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+      });
+      const label = document.createElement("span");
+      label.textContent = "Do usunięcia";
+      mark.append(label);
+      layer.append(mark);
+    }
   }
   function refresh(): void {
     const element = selected ? runtime.element(selected) : undefined;
+    outline.dataset["removing"] = String(selected && pendingRemoval(selected));
     outline.style.display = element && mode !== "browse" ? "block" : "none";
     if (element) {
       const rect = element.getBoundingClientRect();
@@ -163,11 +296,46 @@ export function mountHarness(
         height: `${rect.height}px`,
       });
     }
-    required("[data-selection]").textContent = selected
-      ? `${runtime.element(selected)?.tagName.toLowerCase() ?? ""} #${runtime.element(selected)?.id || selected}`
+    const lastReference = selected
+      ? [...actions]
+          .reverse()
+          .find(
+            (action) => "element" in action && action.element.id === selected,
+          )
+      : undefined;
+    const reference =
+      element && selected
+        ? runtime.reference(selected)
+        : lastReference && "element" in lastReference
+          ? lastReference.element
+          : undefined;
+    required("[data-selection]").textContent = reference
+      ? `${reference.tag} #${reference.source.nodeId}${selected && pendingRemoval(selected) ? " · do usunięcia" : ""}`
       : "Wybierz element strony";
     required<HTMLButtonElement>("[data-parent]").disabled =
-      !selected || !runtime.parent(selected);
+      busy || !selected || !runtime.parent(selected);
+    const editable = !busy && mode === "select" && canManipulate(selected);
+    const location = selected ? placement(selected) : undefined;
+    const position =
+      selected && location ? location.siblings.indexOf(selected) : -1;
+    for (const button of shadow.querySelectorAll<HTMLButtonElement>(
+      "[data-element-action]",
+    )) {
+      const operation = button.dataset["elementAction"];
+      button.disabled =
+        !editable ||
+        (operation === "earlier" && position <= 0) ||
+        (operation === "later" &&
+          (position < 0 || position >= (location?.siblings.length ?? 0) - 1));
+    }
+    required<HTMLButtonElement>("[data-edit-text]").disabled =
+      !editable || !canEditText(selected);
+    required<HTMLElement>(".text-editor").hidden = !editing;
+    required<HTMLButtonElement>("[data-save-text]").disabled = busy;
+    required<HTMLButtonElement>("[data-cancel-text]").disabled = busy;
+    required<HTMLButtonElement>("[data-reset]").disabled = busy;
+    textInput.disabled = busy;
+    pendingPlan();
     required("[data-source]").textContent =
       selected && runtime.element(selected)
         ? runtime.reference(selected).source.file || "Źródło z entrypoints"
@@ -210,11 +378,13 @@ export function mountHarness(
       if (actions.at(-1)?.type === "select") actions.pop();
       addAction({ type: "select", element: runtime.reference(id) });
     }
+    if (selected !== id) editing = null;
     selected = id;
     refresh();
   }
   function setMode(next: Mode): void {
     mode = next;
+    editing = null;
     drag = null;
     marker.style.display = "none";
     for (const button of shadow.querySelectorAll<HTMLButtonElement>(
@@ -269,7 +439,13 @@ export function mountHarness(
       } else {
         const element = pageElement(event.target)!;
         const id = runtime.id(element);
-        select(id);
+        try {
+          select(id);
+        } catch (error) {
+          status(String(error), true);
+          return;
+        }
+        if (pendingRemoval(id)) return;
         drag = { id, start: point(event), active: false, drop: null };
       }
       refresh();
@@ -311,7 +487,13 @@ export function mountHarness(
       )
         return;
       const parent = target.parentElement;
-      if (!parent || !runtime.target(parent)) return;
+      if (
+        !parent ||
+        !runtime.target(parent) ||
+        pendingRemoval(runtime.id(target)) ||
+        pendingRemoval(runtime.id(parent))
+      )
+        return;
       const rect = target.getBoundingClientRect();
       const horizontal =
         getComputedStyle(parent).display === "flex" &&
@@ -371,10 +553,10 @@ export function mountHarness(
           parent: runtime.reference(drop.parentId),
           before: drop.beforeId ? runtime.reference(drop.beforeId) : null,
         };
-        remember();
-        if (runtime.kind === "document")
-          runtime.move(id, drop.parentId, drop.beforeId);
-        addAction(action);
+        queue(action, () => {
+          if (runtime.kind === "document")
+            runtime.move(id, drop.parentId, drop.beforeId);
+        });
         status(
           runtime.kind === "dom"
             ? "Miejsce zaznaczone. Zastosuj zmianę, aby Luna poprawiła kod komponentu."
@@ -434,10 +616,179 @@ export function mountHarness(
   window.addEventListener(
     "keydown",
     (event) => {
-      if (event.key === "Escape" && !busy) setMode("browse");
+      if (busy || event.repeat) return;
+      const typing = event
+        .composedPath()
+        .some(
+          (node) =>
+            node instanceof HTMLElement &&
+            (node.isContentEditable ||
+              ["INPUT", "TEXTAREA", "SELECT"].includes(node.tagName)),
+        );
+      if (event.key === "Escape") {
+        if (editing) closeTextEditor();
+        else setMode("browse");
+        return;
+      }
+      if (typing || mode !== "select") return;
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "z" &&
+        history.length
+      ) {
+        block(event);
+        undo();
+        return;
+      }
+      if (!canManipulate(selected)) return;
+      if (
+        ["Delete", "Backspace"].includes(event.key) &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        block(event);
+        manipulate("remove");
+      }
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "d"
+      ) {
+        block(event);
+        manipulate("duplicate");
+      }
+      if (
+        event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        ["ArrowUp", "ArrowDown"].includes(event.key)
+      ) {
+        block(event);
+        manipulate(event.key === "ArrowUp" ? "earlier" : "later");
+      }
     },
     { signal: abort.signal },
   );
+
+  function queue(action: VisualAction, preview: () => void = () => {}): void {
+    if (actions.length >= 100)
+      throw new Error("Wyślij bieżące zmiany przed dodaniem kolejnych.");
+    remember();
+    preview();
+    addAction(action);
+    editing = null;
+  }
+  function manipulate(operation: string): void {
+    if (busy || mode !== "select" || !selected || !canManipulate(selected))
+      return;
+    try {
+      const id = selected;
+      const element = runtime.reference(id);
+      if (operation === "remove") {
+        queue({ type: "remove", element }, () => {
+          if (runtime.kind === "document") runtime.remove(id);
+        });
+      } else {
+        const location = placement(id);
+        if (!location) return;
+        const position = location.siblings.indexOf(id);
+        if (
+          position < 0 ||
+          (operation === "earlier" && position === 0) ||
+          (operation === "later" && position === location.siblings.length - 1)
+        )
+          return;
+        const beforeId =
+          operation === "earlier"
+            ? location.siblings[position - 1]!
+            : (location.siblings[
+                position + (operation === "duplicate" ? 1 : 2)
+              ] ?? null);
+        const action = {
+          type:
+            operation === "duplicate"
+              ? ("duplicate" as const)
+              : ("move" as const),
+          element,
+          parent: runtime.reference(location.parentId),
+          before: beforeId ? runtime.reference(beforeId) : null,
+        };
+        queue(action, () => {
+          if (runtime.kind !== "document") return;
+          if (action.type === "duplicate") runtime.duplicate(id);
+          else runtime.move(id, location.parentId, beforeId);
+        });
+      }
+      status("Zmiana dodana do planu. Możesz ją cofnąć lub zastosować z Luną.");
+      refresh();
+    } catch (error) {
+      status(
+        error instanceof Error
+          ? error.message
+          : "Nie udało się zaplanować zmiany.",
+        true,
+      );
+    }
+  }
+  for (const button of shadow.querySelectorAll<HTMLButtonElement>(
+    "[data-element-action]",
+  )) {
+    button.addEventListener("click", () =>
+      manipulate(button.dataset["elementAction"]!),
+    );
+  }
+  required("[data-edit-text]").addEventListener("click", () => {
+    if (busy || !selected || !canEditText(selected)) return;
+    editing = selected;
+    const previous = [...actions]
+      .reverse()
+      .find(
+        (action) => action.type === "setText" && action.element.id === selected,
+      );
+    textInput.value =
+      previous?.type === "setText"
+        ? previous.text
+        : (runtime.element(selected)!.textContent ?? "");
+    refresh();
+    textInput.focus();
+  });
+  function closeTextEditor(): void {
+    editing = null;
+    refresh();
+    required<HTMLButtonElement>("[data-edit-text]").focus();
+  }
+  required("[data-cancel-text]").addEventListener("click", () => {
+    if (!busy) closeTextEditor();
+  });
+  required("[data-save-text]").addEventListener("click", () => {
+    if (busy || !editing || !canEditText(editing)) return;
+    try {
+      const id = editing;
+      queue(
+        {
+          type: "setText",
+          element: runtime.reference(id),
+          text: textInput.value,
+        },
+        () => {
+          if (runtime.kind === "document") runtime.setText(id, textInput.value);
+        },
+      );
+      status("Nowy tekst dodany do planu.");
+      refresh();
+    } catch (error) {
+      status(
+        error instanceof Error
+          ? error.message
+          : "Nie udało się zmienić tekstu.",
+        true,
+      );
+    }
+  });
 
   for (const button of shadow.querySelectorAll<HTMLButtonElement>(
     "[data-mode]",
@@ -468,24 +819,30 @@ export function mountHarness(
       required<HTMLElement>(".panel").dataset["collapsed"] !== "true",
     );
   });
-  required("[data-undo]").addEventListener("click", () => {
+  function undo(): void {
     if (busy) return;
     const previous = history.pop();
     if (previous) {
       actions = previous.actions;
+      planVersion++;
       strokes = previous.strokes;
       selected = previous.selected;
       if (runtime.kind === "document" && previous.page)
         runtime.replace(previous.page);
+      editing = null;
+      status("Cofnięto ostatni gest.");
       refresh();
     }
-  });
+  }
+  required("[data-undo]").addEventListener("click", undo);
   required("[data-reset]").addEventListener("click", () => {
     if (busy) return;
     actions = [];
+    planVersion++;
     strokes = [];
     history = [];
     selected = null;
+    editing = null;
     input.value = "";
     if (runtime.kind === "document" && baseline) runtime.replace(baseline);
     status("");
@@ -636,9 +993,11 @@ export function mountHarness(
       revision = result.revision;
       baseline = result.document ?? null;
       actions = [];
+      planVersion++;
       strokes = [];
       history = [];
       selected = null;
+      editing = null;
       input.value = "";
       if (runtime.kind === "document" && result.document)
         runtime.replace(result.document);
