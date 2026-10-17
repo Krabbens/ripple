@@ -13,3 +13,7 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+
+.next/
+.astro/
+next-env.d.ts

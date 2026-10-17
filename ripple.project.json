@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sources": [
+    "crates",
+    "packages",
+    "examples",
+    "migrations",
+    "Cargo.toml",
+    "Cargo.lock",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.base.json",
+    "rust-toolchain.toml"
+  ],
+  "checks": [
+    {
+      "name": "Rust",
+      "command": ["cargo", "test", "--workspace", "--locked"],
+      "timeoutSeconds": 120
+    },
+    {
+      "name": "TypeScript",
+      "command": ["npm", "run", "typecheck"],
+      "timeoutSeconds": 120
+    },
+    {
+      "name": "Runtime",
+      "command": ["npm", "test"],
+      "timeoutSeconds": 120
+    }
+  ],
+  "instructions": "To repozytorium pluginu Ripple dla Astro, React/Vite i Next. Panel jest w packages/harness, adaptery w packages/plugin, lokalny backend w crates. Zachowuj design i DOM gospodarza. Pracuj małymi krokami: maksymalnie 3 pliki, konkretne poprawki tekstu. Fullstack (API, Rust, migracje) jest dozwolony w sources, ale bez uruchamiania migracji na prawdziwej bazie. Model gpt-6-luna, low, przez bezpośredni OAuth ChatGPT. Tokeny pozostają w Rust. Nie używaj Codex CLI/SDK/app-server.",
+  "entrypoints": ["examples/plugin/index.html"],
+  "devOrigins": [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:4321",
+    "http://localhost:4321",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "entrypoints": ["src/main.tsx"],
+  "sources": ["src", "index.html", "vite.config.ts", "package.json"],
+  "devOrigins": ["http://127.0.0.1:5173"],
+  "checks": [
+    {
+      "name": "Vite build",
+      "command": ["npm", "exec", "--offline", "--", "vite", "build"],
+      "timeoutSeconds": 60
+    }
+  ],
+  "instructions": "Mały przykład React/Vite. Zachowaj styl i stan Reacta. Edytuj zwykły JSX, bez bezpośredniego przenoszenia DOM."
+}

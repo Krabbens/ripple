@@ -44,3 +44,10 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run build
+      - run: node --test packages/*/test/*.test.mjs
+      - run: npm run build:examples
+      - name: Check example manifests in disposable workspaces
+        run: |
+          cargo run --locked -p ripple-dev -- --project examples/react/ripple.project.json --check
+          cargo run --locked -p ripple-dev -- --project examples/astro/ripple.project.json --check
+          cargo run --locked -p ripple-dev -- --project examples/next/ripple.project.json --check

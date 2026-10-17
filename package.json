@@ -11,12 +11,27 @@
   },
   "scripts": {
     "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run build --workspace @ripple/core --workspace @ripple/harness && npm run typecheck --workspaces",
+    "test": "npm run build && node --test packages/*/test/*.test.mjs",
+    "dev": "npm run build && cargo run -p ripple-dev --",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:react": "vite --config examples/react/vite.config.ts",
+    "dev:astro": "astro dev --root examples/astro --ignore-lock",
+    "dev:next": "next dev examples/next --hostname 127.0.0.1 --port 3000",
+    "build:examples": "vite build --config examples/react/vite.config.ts && astro build --root examples/astro && next build examples/next --webpack"
   },
   "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "astro": "7.4.0",
+    "happy-dom": "21.0.3",
+    "next": "16.4.2",
     "prettier": "3.9.10",
-    "typescript": "7.0.2"
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
   }
 }
